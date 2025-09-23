@@ -5,18 +5,40 @@ LD = riscv64-unknown-elf-ld
 OBJDUMP = riscv64-unknown-elf-objdump
 
 # 编译选项
-CFLAGS = -Wall -O0 -mcmodel=medany -Iinclude
-ASFLAGS = 
-LDFLAGS = -T kernel/kernel.ld -nostdlib
+# CFLAGS 和 LDFLAGS 中都添加 -g
+CFLAGS = -g -Wall -O0 -mcmodel=medany -Iinclude -nostdlib -ffreestanding
+ASFLAGS = -g # 汇编文件也加上 -g
+LDFLAGS = -g -T kernel/kernel.ld -nostdlib
 
 # 目标文件
-OBJS = kernel/entry.o kernel/main.o kernel/uart.o
+OBJS = kernel/entry.o kernel/main.o kernel/uart.o kernel/printf.o kernel/console.o lib/string.o
+
+VPATH = lib:kernel
 
 # 包含目录
 INCLUDE_DIR = include
 
 # 默认目标
 all: kernel.elf
+
+# 生成并运行
+qemu: kernel.elf
+	qemu-system-riscv64 \
+      -machine virt \
+      -m 128M \
+      -nographic \
+      -bios none \
+      -kernel kernel.elf
+
+# 生成并运行并调试
+qemu-gdb: kernel.elf
+	qemu-system-riscv64 \
+      -machine virt \
+      -m 128M \
+      -nographic \
+      -bios none \
+      -kernel kernel.elf \
+      -s -S
 
 # 创建包含目录（如果不存在）
 $(INCLUDE_DIR):

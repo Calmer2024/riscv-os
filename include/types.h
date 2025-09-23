@@ -1,6 +1,8 @@
 #ifndef TYPES_H
 #define TYPES_H
 
+#include <stdint.h>
+
 // 标准整数类型定义
 typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
