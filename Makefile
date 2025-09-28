@@ -11,7 +11,16 @@ ASFLAGS = -g # 汇编文件也加上 -g
 LDFLAGS = -g -T kernel/kernel.ld -nostdlib
 
 # 目标文件
-OBJS = kernel/entry.o kernel/main.o kernel/uart.o kernel/printf.o kernel/console.o lib/string.o
+OBJS = \
+	kernel/entry.o \
+	kernel/main.o \
+	kernel/uart.o \
+	kernel/printf.o \
+	kernel/console.o \
+	kernel/pmm.o \
+	kernel/vm.o \
+	kernel/test.o \
+	lib/string.o
 
 VPATH = lib:kernel
 

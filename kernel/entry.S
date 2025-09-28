@@ -1,5 +1,5 @@
 # 代码段
-.section .text
+.section .text.entry
 .global _start
 
 # 入口名称为 _start

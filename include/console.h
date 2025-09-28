@@ -7,6 +7,8 @@
 #define ANSI_COLOR_RESET   "\033[0m"
 #define ANSI_CLEAR_SCREEN  "\033[2J\033[H"
 
+#define CONSOLE_BUF_SIZE 256
+
 // 前景色定义
 #define FG_BLACK   30
 #define FG_RED     31
@@ -27,7 +29,16 @@
 #define BG_CYAN    46
 #define BG_WHITE   47
 
+typedef struct {
+    char buf[CONSOLE_BUF_SIZE];
+    int head;  // 写入位置
+    int tail;  // 读取位置
+} console_buffer_t;
+
+extern console_buffer_t console_out_buf;
+
 void console_init(void);
+void console_flush(void);
 void console_putc(char c);
 void console_puts(const char *s);
 void console_clear(void);

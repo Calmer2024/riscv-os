@@ -1,11 +1,26 @@
-#include "stdarg.h"
+#include "../include/stdarg.h"
 #include <stdint.h>
-#include "string.h"
-#include "printf.h"
-#include "console.h"
+#include "../include/string.h"
+#include "../include/printf.h"
+#include "../include/console.h"
+
 
 // 这是一个全局静态数组，用作数字到字符的查找表。例如，数字 10 在十六进制（base 16）中对应字符 a，就可以通过 digits[10] 得到
 static char digits[] = "0123456789abcdef";
+
+// 每次取出 4 个 bit，转换成一个 0-15 的数字，然后查表得到对应的十六进制字符
+void print_pointer(unsigned long num) {
+    int i;
+    // 0x前缀
+    console_putc('0');
+    console_putc('x');
+
+    for (i = 0; i < (sizeof(unsigned long) * 2); i++, num <<= 4) {
+        int x = (int) ((num >> (sizeof(unsigned long) * 8 - 4)) & 0x0f); // 取x最高位
+        char ch = digits[x]; // 查表转换为字符
+        console_putc(ch);
+    }
+}
 
 // 辅助函数：将一个64位整数 num 按照指定的 base（进制，如10或16）转换成字符串，并通过 console_putc 逐字符打印。sign表示是否处理符号
 static void print_number(int64_t num, int base, int sign) {
@@ -82,6 +97,7 @@ int printf(const char *fmt, ...) {
             case 'x': print_number(va_arg(ap, int), 16, 0); break;
             case 's': print_string(va_arg(ap, char*)); break;
             case 'c': console_putc(va_arg(ap, int)); break;
+            case 'p': print_pointer(va_arg(ap,unsigned long )); break;
             case '%': console_putc('%'); break;
             default:  // 未知格式
                 console_putc('%');

@@ -1,5 +1,5 @@
-#include "uart.h"
-#include "types.h"
+#include "../include/uart.h"
+#include "../include/types.h"
 
 void uart_init(void) {
 	//初始化设置两个寄存器的值
