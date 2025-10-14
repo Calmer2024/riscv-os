@@ -19,6 +19,14 @@ static void simple_delay(long count) {
     for (volatile long i = 0; i < count; i++);
 }
 
+static unsigned long long get_time() {
+    unsigned long long cycles;
+    // "rdtime %0" 是汇编指令，把 time 寄存器的值读到 %0 (第一个操作数)
+    // "=r" (cycles) 是约束，告诉编译器把结果存入 C 变量 cycles
+    asm volatile("rdtime %0" : "=r" (cycles));
+    return cycles;
+}
+
 void test_printf_basic() {
     printf("=== printf测试 ===\n");
     printf("Testing integer: %d\n", 42);
@@ -83,13 +91,6 @@ void test_clear(void) {
     printf("屏幕已清空！\n");
 }
 
-unsigned long long get_time() {
-    unsigned long long cycles;
-    // "rdtime %0" 是汇编指令，把 time 寄存器的值读到 %0 (第一个操作数)
-    // "=r" (cycles) 是约束，告诉编译器把结果存入 C 变量 cycles
-    asm volatile("rdtime %0" : "=r" (cycles));
-    return cycles;
-}
 
 void test_printf_timer() {
     unsigned long long start, end, min_diff = 0xFFFFFFFFFFFFFFFF; // 设为最大值
@@ -208,17 +209,13 @@ void test_virtual_memory(void) {
     static volatile int test_data = 123;
     printf("Pre-paging: Kernel data 'test_data' = %d at PA %p\n", test_data, &test_data);
 
-    // 启用分页
-    kvminit();     // 创建内核页表
-    kvminithart(); // 激活页表
-
     // --- 激活分页后的测试 ---
     // 如果代码能执行到这里，说明内核代码段的映射是正确的，
     // 程序计数器(PC)已经在使用虚拟地址无缝地继续执行。
     printf("SUCCESS: CPU is now executing from virtual addresses.\n");
 
     // 测试内核数据段访问
-    printf("Post-paging: Accessing 'test_data' via VA 0x%p...\n", &test_data);
+    printf("Post-paging: Accessing 'test_data' via VA %p...\n", &test_data);
     test_data = 456;
     assert(test_data == 456);
     printf("SUCCESS: Kernel data segment is accessible. test_data = %d\n", test_data);
@@ -227,4 +224,98 @@ void test_virtual_memory(void) {
     printf("SUCCESS: Device memory (UART) is accessible via its mapping.\n");
 
     printf("Virtual Memory test PASSED.\n");
+}
+
+
+// ---Task 4---
+
+extern volatile uint64 g_ticks_count;
+
+void test_timer_interrupt(void) {
+    printf("\n--- 5. Testing Timer Interrupt Functionality ---\n");
+    printf("This test will wait for 5 timer interrupts (ticks).\n");
+
+    // 记录测试开始前的中断计数值
+    uint64 start_ticks = g_ticks_count;
+
+    // 等待，直到 g_ticks_count 的值增加了5
+    while (g_ticks_count < start_ticks + 5) {
+        // 在等待期间，我们可以打印信息，证明主程序(非中断部分)在正常运行
+        printf("  main loop waiting... current ticks: %d\n", g_ticks_count);
+        // 执行一个简单的延时循环，模拟“做其他事”
+        for (volatile int i = 0; i < 50000000; i++);
+    }
+
+    printf("\nSUCCESS: Detected %d new timer interrupts.\n", g_ticks_count - start_ticks);
+    printf("Timer Interrupt test PASSED.\n");
+}
+/**
+ * @brief 3. 测试写入非法的内存区域触发异常
+ */
+void test_store_page_fault(void) {
+    printf("\n=== Running test: Write to Read-Only Memory(store page fault) ===\n");
+    // KERNEL_BASE 是我们内核代码的起始地址，它被映射为只读+可执行。
+    char *kernel_code_ptr = (char *) KERNBASE + 20;
+    // 2. 接下来，尝试写入。CPU会顿住，并触发一个异常，不过目前没写异常处理
+    printf("Attempting to write 'X' to read-only kernel code @ %p...\n", kernel_code_ptr);
+    // CPU 硬件会在这里检测到权限冲突 (W=0)，并触发一个 Store Page Fault！
+    *kernel_code_ptr = 'X';
+    // 如果代码能执行到这里，说明内存保护没有生效，是一个严重的 Bug！
+    printf("!!! TEST FAILED: Write to read-only memory did NOT cause a fault! !!!\n");
+}
+
+/**
+ * @brief 4. 测试非法指令触发异常
+ */
+void test_illegal_instruction(void) {
+    printf("\nTriggering an illegal instruction exception...\n");
+    printf("Expected outcome: Kernel panic with scause=2 (Illegal instruction).\n");
+
+    // 使用内联汇编插入一个全0的字，这在RISC-V中通常是一个非法指令
+    // 如果异常处理正常，系统会在这里panic，永远不会执行下一行printf
+    asm volatile(".word 0x00000000");
+
+    // 如果代码能执行到这里，说明异常没有被捕获
+    panic("test_exception_handling: Illegal instruction was not caught!");
+}
+
+void recursive_bomb(int depth) {
+    if(depth % 10 == 0) {
+        uint64 sp;
+        asm volatile("mv %0, sp" : "=r"(sp));
+        printf("Recursion depth: %d, SP: %p\n", depth, sp);
+    }
+    recursive_bomb(depth + 1);
+}
+
+void test_stack_overflow(void) {
+    printf("\n--- 8. Testing Stack Overflow Detection ---\n");
+    printf("Calling a recursive function to exhaust the stack...\n");
+    printf("Expected outcome: Kernel panic with 'Stack Overflow' message.\n");
+
+    recursive_bomb(0);
+
+    panic("test_stack_overflow: Stack overflow was not caught!");
+}
+
+// --- 总测试函数 ---
+void run_tests(void) {
+    // --- Task2 ---
+    // test_printf_basic();
+    // test_printf_edge_cases();
+    // test_console_features();
+    // test_printf_timer();
+
+    // --- Task3 ---
+    // test_physical_memory();
+    // test_pagetable();
+    // test_virtual_memory();
+
+    // --- Task4 ---
+    // test_timer_interrupt();
+    test_store_page_fault();
+    // test_illegal_instruction();
+
+    printf("\nAll tests passed successfully!\n");
+    printf("Kernel initialization complete. Entering idle loop.\n");
 }

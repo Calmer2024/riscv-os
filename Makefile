@@ -20,6 +20,11 @@ OBJS = \
 	kernel/pmm.o \
 	kernel/vm.o \
 	kernel/test.o \
+	kernel/trap.o \
+	kernel/timer.o \
+	kernel/syscall.o \
+	kernel/kernelvec.o \
+	kernel/proc.o \
 	lib/string.o
 
 VPATH = lib:kernel
@@ -36,7 +41,6 @@ qemu: kernel.elf
       -machine virt \
       -m 128M \
       -nographic \
-      -bios none \
       -kernel kernel.elf
 
 # 生成并运行并调试
@@ -45,7 +49,6 @@ qemu-gdb: kernel.elf
       -machine virt \
       -m 128M \
       -nographic \
-      -bios none \
       -kernel kernel.elf \
       -s -S
 

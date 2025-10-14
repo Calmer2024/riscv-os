@@ -159,6 +159,7 @@ int sprintf(char *buf, const char *fmt, ...) {
 }
 
 void panic(const char *s) {
+    asm volatile("csrw sie, zero");
     printf("PANIC: %s\n", s);
     while (1); // 挂起系统
 }

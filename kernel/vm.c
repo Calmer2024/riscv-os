@@ -41,17 +41,36 @@ void kvminit(void) {
     // --- 映射内核 ---
     // 映射内核代码段 (.text)，权限为 可读(R) + 可执行(X)，不可写保护内核代码
     printf("kvminit: mapping kernel .text (R-X)...\n");
-    map_page(kernel_pagetable, KERNBASE, KERNBASE, PTE_R | PTE_X);
+    for (uint64 pa = KERNBASE; pa < (uint64)etext; pa += PGSIZE) {
+        map_page(kernel_pagetable, pa, pa, PTE_R | PTE_X);
+    }
 
-    // 映射内核数据段 (.data) 和之后的所有物理内存
+    // --- 映射内核数据段 (.data) 和之后的所有物理内存 ---
     // 权限为 可读(R) + 可写(W)
     printf("kvminit: mapping kernel .data and physical memory (RW-)...\n");
     // 这里简化处理，直接将从etext到PHYSTOP的整个范围映射
     // 在真实的xv6中会更精细
     uint64 pa_start = PGROUNDUP((uint64)etext);
     for(uint64 pa = pa_start; pa < PHYSTOP; pa += PGSIZE) {
+        if(pa >= KERNEL_STACK_GUARD && pa < KERNEL_STACK_TOP) {
+            // 如果重叠了，就跳过这个虚拟地址，不进行映射
+            continue;
+        }
         map_page(kernel_pagetable, pa, pa, PTE_R | PTE_W);
     }
+
+    // --- 映射真正的内核栈 ---
+    printf("kvminit: mapping kernel stack...\n");
+    for(int i = 0; i < KERNEL_STACK_PAGES; i++) {
+        void* pa = alloc_page();
+        if(!pa) panic("kvminit: failed to allocate kernel stack");
+
+        uint64 va = KERNEL_STACK_TOP - (i + 1) * PGSIZE;
+        // 将 [KERNEL_STACK_TOP-4KB, KERNEL_STACK_TOP] 映射到物理页
+        map_page(kernel_pagetable, va, (uint64)pa, PTE_R | PTE_W);
+    }
+    printf("kvminit: kernel stack guard page at VA: 0x%lx is NOT mapped.\n", KERNEL_STACK_GUARD);
+    // 注意：我们没有为 KERNEL_STACK_GUARD 这一页调用 map_page，它保持未映射状态。
 
     printf("kvminit: kernel pagetable created.\n");
 }
@@ -115,6 +134,23 @@ pte_t* walk_lookup(pagetable_t pt, uint64 va) {
     return &pt[PX(0, va)];
 }
 
+void handle_page_fault(struct trapframe *tf) {
+    // r_stval() 会返回导致故障的地址
+    uint64 fault_va = r_stval();
+
+    // --- 栈溢出检测 ---
+    if (fault_va >= KERNEL_STACK_GUARD && fault_va < KERNEL_STACK_GUARD + PGSIZE) {
+        panic("Kernel Stack Overflow");
+    }
+
+    printf("\n--- Page Fault Occurred! ---\n");
+    printf("Faulting Virtual Address: %p\n", fault_va);
+    printf("Instruction Pointer (epc): %p\n", tf->epc);
+
+    // 在一个简单的内核中，任何缺页故障都是致命的
+    panic("Page Fault");
+}
+
 // 查找现有映射，如果有效就返回地址，无效就创建一个新的页进行映射
 pte_t* walk_create(pagetable_t pt, uint64 va) {
     if(va >= (1L << 39)) panic("walk_create: va too large");
@@ -172,3 +208,4 @@ void dump_pagetable(pagetable_t pt) {
     dump_walk(pt, 2, 0);
     printf("--- End of Dump ---\n");
 }
+

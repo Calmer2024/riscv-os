@@ -1,7 +1,7 @@
 OUTPUT_ARCH(riscv)
 ENTRY(_start) /* _start 符号是程序的入口点，在 entry.S 中定义 */
 
-BASE_ADDRESS = 0x80000000;
+BASE_ADDRESS = 0x80200000;
 
 /* 定义程序头(Segments)，并分别指定权限 */
 PHDRS

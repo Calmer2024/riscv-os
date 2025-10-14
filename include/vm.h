@@ -2,6 +2,7 @@
 #define __VM_H__
 
 #include "types.h"
+#include "proc.h"
 
 // 页表类型定义
 typedef uint64* pagetable_t;
@@ -13,6 +14,7 @@ void destroy_pagetable(pagetable_t pt);
 int map_page(pagetable_t pt, uint64 va, uint64 pa, int perm);
 void dump_pagetable(pagetable_t pt);
 pte_t* walk_lookup(pagetable_t pt, uint64 va);
+void handle_page_fault(struct trapframe *tf);
 
 // --- 内核页表初始化 ---
 void kvminit(void);

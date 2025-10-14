@@ -45,16 +45,41 @@
 // 页表基址配置
 #define MAKE_SATP(pagetable) (SATP_MODE_SV39 | (((uint64)pagetable) >> 12))
 
-// --- satp 寄存器操作 ---
-static inline void w_satp(uint64 x) {
-    asm volatile("csrw satp, %0" : : "r" (x));
-}
+// --- satp: 页表基址寄存器 ---
+// 往satp寄存器中写
+static inline void w_satp(uint64 x) { asm volatile("csrw satp, %0" : : "r" (x)); }
+// 在satp寄存器中读
+static inline uint64 r_satp() { uint64 x; asm volatile("csrr %0, satp" : "=r" (x)); return x; }
 
-static inline uint64 r_satp() {
-    uint64 x;
-    asm volatile("csrr %0, satp" : "=r" (x));
-    return x;
-}
+// --- stvec: S-Mode陷阱向量基地址寄存器 ---
+static inline void w_stvec(uint64 x) { asm volatile("csrw stvec, %0" : : "r" (x)); }
+static inline uint64 r_stvec() { uint64 x; asm volatile("csrr %0, stvec" : "=r" (x)); return x; }
+
+// --- sie: S-Mode中断使能寄存器 ---
+#define SIE_SEIE (1L << 9) // 外部中断
+#define SIE_STIE (1L << 5) // 时钟中断
+#define SIE_SSIE (1L << 1) // 软件中断
+static inline void w_sie(uint64 x) { asm volatile("csrw sie, %0" : : "r" (x)); }
+static inline uint64 r_sie() { uint64 x; asm volatile("csrr %0, sie" : "=r" (x)); return x; }
+
+// --- sstatus: S-Mode状态寄存器 ---
+#define SSTATUS_SIE (1L << 1) // S-Mode 中断总开关
+static inline void w_sstatus(uint64 x) { asm volatile("csrw sstatus, %0" : : "r" (x)); }
+static inline uint64 r_sstatus() { uint64 x; asm volatile("csrr %0, sstatus" : "=r" (x)); return x; }
+
+// --- scause: S-Mode陷阱原因寄存器 ---
+static inline uint64 r_scause() { uint64 x; asm volatile("csrr %0, scause" : "=r" (x)); return x; }
+
+// --- sepc: S-Mode异常程序计数器 ---
+static inline void w_sepc(uint64 x) { asm volatile("csrw sepc, %0" : : "r" (x)); }
+static inline uint64 r_sepc() { uint64 x; asm volatile("csrr %0, sepc" : "=r" (x)); return x; }
+
+// --- stval: S-Mode陷阱附加信息寄存器 ---
+static inline uint64 r_stval() { uint64 x; asm volatile("csrr %0, stval" : "=r" (x)); return x; }
+
+// --- sscratch: S-Mode临时寄存器 ---
+static inline void w_sscratch(uint64 x) { asm volatile("csrw sscratch, %0" : : "r" (x)); }
+static inline uint64 r_sscratch() { uint64 x; asm volatile("csrr %0, sscratch" : "=r" (x)); return x; }
 
 // --- TLB 刷新 ---
 static inline void sfence_vma() {
