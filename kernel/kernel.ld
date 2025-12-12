@@ -43,11 +43,6 @@ SECTIONS
     _bss_end = .;
   } :data /* BSS段是可写的，所以也放入 data segment */
 
-  . = ALIGN(16);
-  stack_bottom = .;
-  . += 4 * 4096; /* 分配 16KB 栈空间 */
-  stack_top = .;
-
   /* 定义 end 符号，表示内核使用的所有内存的末尾 */
     . = ALIGN(4096);
     PROVIDE(end = .);

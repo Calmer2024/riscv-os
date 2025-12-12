@@ -10,22 +10,32 @@ CFLAGS = -g -Wall -O0 -mcmodel=medany -Iinclude -nostdlib -ffreestanding
 ASFLAGS = -g # 汇编文件也加上 -g
 LDFLAGS = -g -T kernel/kernel.ld -nostdlib
 
+
+# 汇编源文件
+S_SRCS = kernel/entry.S \
+         kernel/kernelvec.S \
+         kernel/swtch.S \
+         user/usys.S \
+         kernel/uservec.S
+
+# C源文件
+C_SRCS = kernel/main.c \
+         kernel/printf.c \
+         kernel/uart.c \
+         kernel/console.c \
+         kernel/pmm.c \
+         kernel/vm.c \
+         kernel/trap.c \
+         kernel/timer.c \
+         kernel/proc.c \
+         kernel/spinlock.c \
+         kernel/syscall.c \
+         kernel/sysproc.c \
+         kernel/test.c \
+         lib/string.c \
+
 # 目标文件
-OBJS = \
-	kernel/entry.o \
-	kernel/main.o \
-	kernel/uart.o \
-	kernel/printf.o \
-	kernel/console.o \
-	kernel/pmm.o \
-	kernel/vm.o \
-	kernel/test.o \
-	kernel/trap.o \
-	kernel/timer.o \
-	kernel/syscall.o \
-	kernel/kernelvec.o \
-	kernel/proc.o \
-	lib/string.o
+OBJS = $(S_SRCS:.S=.o) $(C_SRCS:.c=.o)
 
 VPATH = lib:kernel
 

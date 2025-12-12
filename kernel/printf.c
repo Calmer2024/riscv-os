@@ -101,7 +101,7 @@ int printf(const char *fmt, ...) {
             case '%': console_putc('%'); break;
             default:  // 未知格式
                 console_putc('%');
-                console_putc(fmt[-1]);
+                if(fmt[-1]) console_putc(fmt[-1]);
         }
     }
 

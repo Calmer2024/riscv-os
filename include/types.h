@@ -1,6 +1,8 @@
 #ifndef TYPES_H
 #define TYPES_H
 
+#ifndef __ASSEMBLER__
+
 #include <stdint.h>
 
 // 标准整数类型定义
@@ -24,5 +26,6 @@ typedef uint8_t  uint8;
 typedef uint64_t size_t;
 typedef int64_t ssize_t;
 
+#endif // __ASSEMBLER__
 
 #endif

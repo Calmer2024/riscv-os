@@ -21,7 +21,7 @@ void handle_exception(struct trapframe *tf) {
             panic("Illegal Instruction");
             break;
         case 8: // 用户模式环境调用 (ecall from U-Mode)
-            syscall_handler(tf);
+            // syscall_handler(tf);
             break;
 
         case 12: // 指令页故障 (Instruction page fault)
@@ -99,4 +99,47 @@ void kerneltrap(struct trapframe *tf) {
     }
 
     w_sepc(sepc);
+}
+
+
+// 用户陷阱处理 (由 uservec.S 调用)
+void usertrap(void) {
+    uint64 scause = r_scause();
+    struct proc *p = myproc();
+
+    if(p == 0) {
+        printf("usertrap: no proc\n");
+        return;
+    }
+
+    // (设置 trapframe->epc，以便 sret 返回)
+    p->trapframe->epc = r_sepc();
+
+    if(scause == 8) { // User ECALL (系统调用)
+        // 必须允许中断，否则 sleep 会死锁
+        intr_on();
+
+        // ecall 会使 epc + 4
+        p->trapframe->epc += 4;
+
+        syscall_dispatch(); // 调用分发器
+
+    } else if (scause == (1L << 63 | 5)) { // S-Mode Timer Interrupt
+        // 时钟中断 (来自 S-Mode)
+        // (你需要配置时钟... 假设已配置)
+
+        // 强制放弃 CPU (抢占)
+        yield();
+
+    } else if (scause == 13 || scause == 15) { // Page Fault
+        handle_page_fault(p->trapframe); // 来自你的 vm.h
+
+    } else {
+        printf("usertrap: unexpected scause %p, pid=%d\n", scause, p->pid);
+        // (杀死进程)
+        p->state = ZOMBIE;
+    }
+
+    // 返回用户空间
+    usertrapret();
 }

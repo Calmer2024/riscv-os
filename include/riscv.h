@@ -1,7 +1,6 @@
 #ifndef __RISCV_H__
 #define __RISCV_H__
 
-#include "types.h"
 // Sv39页表机制下虚拟地址的分解
 /*
 | 63 ..... 39 |  38 .. 30  |  29 .. 21  |  20 .. 12  |  11 .. 0   |
@@ -45,6 +44,16 @@
 // 页表基址配置
 #define MAKE_SATP(pagetable) (SATP_MODE_SV39 | (((uint64)pagetable) >> 12))
 
+#define SIE_SEIE (1L << 9) // 外部中断
+#define SIE_STIE (1L << 5) // 时钟中断
+#define SIE_SSIE (1L << 1) // 软件中断
+
+#define SSTATUS_SIE (1L << 1) // S-Mode 中断总开关
+
+#ifndef __ASSEMBLER__
+
+#include "types.h"
+
 // --- satp: 页表基址寄存器 ---
 // 往satp寄存器中写
 static inline void w_satp(uint64 x) { asm volatile("csrw satp, %0" : : "r" (x)); }
@@ -56,14 +65,10 @@ static inline void w_stvec(uint64 x) { asm volatile("csrw stvec, %0" : : "r" (x)
 static inline uint64 r_stvec() { uint64 x; asm volatile("csrr %0, stvec" : "=r" (x)); return x; }
 
 // --- sie: S-Mode中断使能寄存器 ---
-#define SIE_SEIE (1L << 9) // 外部中断
-#define SIE_STIE (1L << 5) // 时钟中断
-#define SIE_SSIE (1L << 1) // 软件中断
 static inline void w_sie(uint64 x) { asm volatile("csrw sie, %0" : : "r" (x)); }
 static inline uint64 r_sie() { uint64 x; asm volatile("csrr %0, sie" : "=r" (x)); return x; }
 
 // --- sstatus: S-Mode状态寄存器 ---
-#define SSTATUS_SIE (1L << 1) // S-Mode 中断总开关
 static inline void w_sstatus(uint64 x) { asm volatile("csrw sstatus, %0" : : "r" (x)); }
 static inline uint64 r_sstatus() { uint64 x; asm volatile("csrr %0, sstatus" : "=r" (x)); return x; }
 
@@ -86,5 +91,7 @@ static inline void sfence_vma() {
     // 刷新所有TLB项
     asm volatile("sfence.vma zero, zero");
 }
+
+#endif // __ASSEMBLER__
 
 #endif

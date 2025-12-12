@@ -2,7 +2,8 @@
 #define __VM_H__
 
 #include "types.h"
-#include "proc.h"
+
+struct trapframe;
 
 // 页表类型定义
 typedef uint64* pagetable_t;

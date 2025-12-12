@@ -36,7 +36,7 @@ void free_page(void* page) {
     }
 
     // 清空页面内容，并将其加入空闲链表头部
-    memset(page, 1, PGSIZE); // 用非0值填充便于调试
+    // memset(page, 1, PGSIZE); // 用非0值填充便于调试
     PageNode *p = (PageNode*)page;
     p->next = pmm.free_list;
     pmm.free_list = p;

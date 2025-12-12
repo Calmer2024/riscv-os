@@ -5,7 +5,8 @@
 #include "../include/vm.h"
 #include "../include/riscv.h"
 #include "../include/memlayout.h"
-#include "../include/console.h"
+#include "../include/proc.h"
+#include "../include/stddef.h"
 
 #define assert(x)                                     \
 do {                                              \
@@ -298,6 +299,104 @@ void test_stack_overflow(void) {
     panic("test_stack_overflow: Stack overflow was not caught!");
 }
 
+
+// ==========================================================
+// === 进程和调度器测试 (内核态)
+// ==========================================================
+
+// (内核函数, 来自 proc.c)
+extern int create_kthread(void (*entry)(void));
+extern int kthread_wait(int *status);
+extern void kthread_exit(int status);
+
+// ---------------------------------
+// 1. 进程创建测试
+// ---------------------------------
+
+// 简单的内核线程任务
+static void simple_task(void) {
+    int pid = myproc()->pid;
+    printf("  [PID %d] Hello from simple_task!\n", pid);
+    // simple_delay(100000); // 占用一点时间
+    printf("  [PID %d] simple_task exiting.\n", pid);
+    kthread_exit(pid * 2); // 返回一个唯一的退出码
+}
+
+void test_process_creation(void) {
+    printf("\n--- 6. Testing Process Creation (Kernel Threads) ---\n");
+    printf("Testing basic process creation...\n");
+
+    int pid = create_kthread(simple_task);
+    assert(pid > 0);
+    printf("Created kthread with PID %d.\n", pid);
+
+    // 等待它
+    int status = 0;
+    int child_pid = kthread_wait(&status);
+    assert(child_pid == pid);
+    assert(status == pid * 2); // 检查退出码
+    printf("Waited for PID %d, got status %d. OK.\n", child_pid, status);
+
+    // 测试进程表限制
+    printf("Testing process table limits (NPROC=%d)...\n", NPROC);
+    int pids[NPROC];
+    int count = 0;
+    for (int i = 0; i < NPROC + 5; i++) {
+        int new_pid = create_kthread(simple_task);
+        if (new_pid > 0) {
+            pids[count++] = new_pid;
+        } else {
+            break; // 应该在这里失败 (alloc_process 返回 0)
+        }
+    }
+    printf("Created %d processes (expected ~%d).\n", count, NPROC - 2); // (减去 main 和我们自己)
+
+    // 清理测试进程
+    printf("Cleaning up %d processes...\n", count);
+    for (int i = 0; i < count; i++) {
+        kthread_wait(NULL); // 逐个等待
+    }
+    printf("Process creation test PASSED.\n");
+}
+
+// ---------------------------------
+// 2. 调度器测试 (对应你的 test_scheduler)
+// ---------------------------------
+
+// 计算密集型任务
+static void cpu_intensive_task(void) {
+    int pid = myproc()->pid;
+    printf("  [PID %d] CPU intensive task started.\n", pid);
+
+    // 运行一段时间
+    uint64 start = get_time();
+    while(get_time() < start + 50000000) { // 大约 0.5 秒 (取决于时钟)
+        // 忙等待
+    }
+
+    printf("  [PID %d] CPU intensive task finished.\n", pid);
+    kthread_exit(0);
+}
+
+void test_scheduler(void) {
+    printf("\n--- 7. Testing Scheduler (Round-Robin) ---\n");
+
+    // (注意：时钟中断必须已启用并调用 yield() 才能使此测试工作)
+    printf("Creating 3 CPU-intensive tasks...\n");
+
+    create_kthread(cpu_intensive_task);
+    create_kthread(cpu_intensive_task);
+    create_kthread(cpu_intensive_task);
+
+    printf("Waiting for all 3 tasks to complete...\n");
+    // (如果调度器工作，它们将并发运行)
+    kthread_wait(NULL);
+    kthread_wait(NULL);
+    kthread_wait(NULL);
+
+    printf("Scheduler test PASSED.\n");
+}
+
 // --- 总测试函数 ---
 void run_tests(void) {
     // --- Task2 ---
@@ -313,8 +412,12 @@ void run_tests(void) {
 
     // --- Task4 ---
     // test_timer_interrupt();
-    test_store_page_fault();
+    // test_store_page_fault();
     // test_illegal_instruction();
+
+    // --- Task5 ---
+    test_process_creation();
+    test_scheduler();
 
     printf("\nAll tests passed successfully!\n");
     printf("Kernel initialization complete. Entering idle loop.\n");

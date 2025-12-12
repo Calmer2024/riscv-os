@@ -1,60 +1,56 @@
-#include "../include/uart.h"
+// kernel/main.c
+
+#include "../include/types.h"
+#include "../include/riscv.h"
 #include "../include/printf.h"
-#include "../include/console.h"
-#include "../include/pmm.h"
+#include "../include/proc.h"
 #include "../include/vm.h"
+#include "../include/pmm.h"
 #include "../include/test.h"
-#include "../include/trap.h"
-#include "../include/timer.h"
-#include "../include/memlayout.h"
 
-// 来自链接脚本的外部符号
-extern char _bss_start[], _bss_end[];
-
-// 内核页表
-pagetable_t kernel_pagetable;
+// 声明外部函数
+extern void console_init(void);
+extern void timer_init(void);
+extern void trap_init_hart(void);
+extern void kvminithart(void);
 
 int main(void) {
-    // 启动控制台
+    // 1. 此时我们运行在 entry.S 设置的 stack0 上
+    
     console_init();
-    // 输出启动信息
-    uart_puts("\n=== MiniOS Boot Success ===\n");
-    uart_puts("Hello from C main function!\n");
-    uart_puts("BSS segment cleared successfully\n");
+    printf("\n=== MiniOS Booting ===\n");
 
-    pmm_init();
-    kvminit();     // 创建内核页表
+    pmm_init();      // 初始化物理内存分配器
+    
+    kvminit();       // 创建内核页表 (包含映射所有进程的内核栈)
+    kvminithart();   // 开启分页 (SATP)
+    
+    proc_init();     // 初始化进程表锁
+    trap_init_hart(); // 初始化中断向量 (stvec)
+    timer_init();    // 初始化时钟中断
 
-    trap_init_hart(); // 初始化中断向量
-    timer_init();     // 初始化时钟（它会自己注册中断）
+    printf("main: system initialized.\n");
 
-    kvminithart(); // 激活页表
+    // 2. 创建第一个内核进程
+    //    注意：xv6 在这里调用的是 userinit() 创建用户进程
+    //    但因为我们目前只有内核线程，所以依然用 create_kthread
+    if(create_kthread(run_tests) < 0) {
+        panic("main: cannot create first kthread");
+    }
 
-    // --- 切换到受保护的内核栈 ---
-    printf("Switching to new kernel stack at VA: %p\n", KERNEL_STACK_TOP);
-    asm volatile("mv sp, %0" : : "r"((void*)KERNEL_STACK_TOP));
-
-    // 开中断
+    // 3. 启动调度器
+    //    注意：这一步是单行道。
+    //    scheduler() 会调用 swtch
+    //    swtch 会把当前的 sp (也就是 stack0) 换成 PID 2 的 kstack
+    //    从此以后，stack0 就被废弃了，除非所有 CPU 都空闲。
+    printf("main: starting scheduler...\n");
+    
+    // 开中断 (SSTATUS_SIE)，让调度器内的中断能工作
     w_sstatus(r_sstatus() | SSTATUS_SIE);
 
-    run_tests();
+    scheduler(); 
 
-    // 进入主循环
-    while (1) {
-        
-        // 简单的呼吸灯效果（通过输出字符表示系统存活）
-        static int counter = 0;
-        if (++counter % 1000000 == 0) {
-            uart_putc('.');
-        }
-    }
-}
-
-// 防止程序意外退出的安全措施
-__attribute__((noreturn)) void system_halt(void) {
-    uart_puts("\n*** System Halted ***\n");
-    while (1) {
-        // 无限循环，防止系统重启
-        asm volatile ("wfi"); // 等待中断，为节能
-    }
+    // 永远不该执行到这里
+    panic("main: scheduler returned");
+    return 0;
 }

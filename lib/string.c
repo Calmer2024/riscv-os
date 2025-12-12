@@ -27,3 +27,14 @@ void *memset(void *s, int c, size_t n) {
     // 按照C语言标准，返回原始的指针
     return s;
 }
+
+void*
+memcpy(void *dst, const void *src, size_t n)
+{
+    char *cdst = (char*)dst;
+    const char *csrc = (const char*)src;
+    for(size_t i = 0; i < n; i++) {
+        cdst[i] = csrc[i];
+    }
+    return dst;
+}
