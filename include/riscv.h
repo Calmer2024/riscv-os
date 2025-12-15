@@ -1,97 +1,313 @@
-#ifndef __RISCV_H__
-#define __RISCV_H__
-
-// Sv39页表机制下虚拟地址的分解
-/*
-| 63 ..... 39 |  38 .. 30  |  29 .. 21  |  20 .. 12  |  11 .. 0   |
-|-------------|------------|------------|------------|------------|
-|    Unused   |   VPN[2]   |   VPN[1]   |   VPN[0]   | Page Offset|
-| (Must be 0) | (9 bits)   | (9 bits)   | (9 bits)   | (12 bits)  |
- */
-
-// PTE结构
-/*
-63      54 53      28 27      10 9   8 7 6 5 4 3 2 1 0
-| Reserved |   PPN   | Reserved |D|A|G|U|X|W|R|V|
- */
-
-// --- Sv39 页表项 (PTE) 和 页目录项 (PDE) 标志位 ---
-// 1L表示值为1的long类型，64位整数，1L<<n即生成第n位为1的掩码
-#define PTE_V (1L << 0) // Valid
-#define PTE_R (1L << 1) // Read
-#define PTE_W (1L << 2) // Write
-#define PTE_X (1L << 3) // Execute
-#define PTE_U (1L << 4) // User
-
-// --- 地址转换宏 ---
-// 将物理地址转换为PTE中的PPN字段
-#define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
-// 从PTE中提取物理地址
-#define PTE2PA(pte) ((((pte) >> 10) << 12))
-
-// --- 虚拟地址索引提取 ---
-// level是0，1，2级索引，va是虚拟地址，分别取n级页表索引
-#define PXMASK 0x1FF // 9 bits
-#define PX(level, va) ((((uint64)va) >> (12 + (level) * 9)) & PXMASK)
-
-// --- satp 寄存器操作 ---（satp寄存器是RISC-V架构中控制虚拟内存系统的核心寄存器）
-// stap寄存器结构
-/*
-63      60 59                  44 43                0
-|  MODE   |         ASID         |        PPN         |
- */
-#define SATP_MODE_SV39 (8L << 60) //这里是控制stap寄存器分页模式控制的MODE段，设置为Sv39
-// 页表基址配置
-#define MAKE_SATP(pagetable) (SATP_MODE_SV39 | (((uint64)pagetable) >> 12))
-
-#define SIE_SEIE (1L << 9) // 外部中断
-#define SIE_STIE (1L << 5) // 时钟中断
-#define SIE_SSIE (1L << 1) // 软件中断
-
-#define SSTATUS_SIE (1L << 1) // S-Mode 中断总开关
-
-#ifndef __ASSEMBLER__
+#ifndef RISCV_H
+#define RISCV_H
 
 #include "types.h"
 
-// --- satp: 页表基址寄存器 ---
-// 往satp寄存器中写
-static inline void w_satp(uint64 x) { asm volatile("csrw satp, %0" : : "r" (x)); }
-// 在satp寄存器中读
-static inline uint64 r_satp() { uint64 x; asm volatile("csrr %0, satp" : "=r" (x)); return x; }
 
-// --- stvec: S-Mode陷阱向量基地址寄存器 ---
-static inline void w_stvec(uint64 x) { asm volatile("csrw stvec, %0" : : "r" (x)); }
-static inline uint64 r_stvec() { uint64 x; asm volatile("csrr %0, stvec" : "=r" (x)); return x; }
+#define PAGE_SIZE 4096 // 页大小（字节byte）
+#define LEAF_PTES (PAGE_SIZE >> 3) // 一个页表包含512个PTE
+#define PAGE_SHIFT 12  // 页内偏移（12位）
 
-// --- sie: S-Mode中断使能寄存器 ---
-static inline void w_sie(uint64 x) { asm volatile("csrw sie, %0" : : "r" (x)); }
-static inline uint64 r_sie() { uint64 x; asm volatile("csrr %0, sie" : "=r" (x)); return x; }
+#define PGROUNDUP(sz)  (((sz)+PAGE_SIZE-1) & ~(PAGE_SIZE-1))
+#define PGROUNDDOWN(a) (((a)) & ~(PAGE_SIZE-1))
 
-// --- sstatus: S-Mode状态寄存器 ---
-static inline void w_sstatus(uint64 x) { asm volatile("csrw sstatus, %0" : : "r" (x)); }
-static inline uint64 r_sstatus() { uint64 x; asm volatile("csrr %0, sstatus" : "=r" (x)); return x; }
+#define PTE_V (1L << 0) // 有效位
+#define PTE_R (1L << 1) // 可读
+#define PTE_W (1L << 2) // 可写
+#define PTE_X (1L << 3) // 可运行
+#define PTE_U (1L << 4) // 用户态能否使用
 
-// --- scause: S-Mode陷阱原因寄存器 ---
-static inline uint64 r_scause() { uint64 x; asm volatile("csrr %0, scause" : "=r" (x)); return x; }
+#define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
 
-// --- sepc: S-Mode异常程序计数器 ---
-static inline void w_sepc(uint64 x) { asm volatile("csrw sepc, %0" : : "r" (x)); }
-static inline uint64 r_sepc() { uint64 x; asm volatile("csrr %0, sepc" : "=r" (x)); return x; }
+#define PTE2PA(pte) (((pte) >> 10) << 12)
 
-// --- stval: S-Mode陷阱附加信息寄存器 ---
-static inline uint64 r_stval() { uint64 x; asm volatile("csrr %0, stval" : "=r" (x)); return x; }
+#define PTE_FLAGS(pte) ((pte) & 0x3FF)
 
-// --- sscratch: S-Mode临时寄存器 ---
-static inline void w_sscratch(uint64 x) { asm volatile("csrw sscratch, %0" : : "r" (x)); }
-static inline uint64 r_sscratch() { uint64 x; asm volatile("csrr %0, sscratch" : "=r" (x)); return x; }
+// 最大的地址，为了避免符号问题，最高位不使用
+#define MAX_VIRTUAL_ADDR (1L << (9 + 9 + 9 + 12 - 1))
 
-// --- TLB 刷新 ---
-static inline void sfence_vma() {
-    // 刷新所有TLB项
+
+#ifndef __ASSEMBLER__
+typedef uint64 pte_t; // 一个PTE
+typedef uint64 *pagetable_t; // 指向一个4K的页，包含 512 PTEs
+
+// 获取9bit的页索引
+#define PPN_MASK 0x1FF
+// 获取k级页的索引需要的位移
+#define PPN_SHIFT(level) (PAGE_SHIFT + 9 * (level))
+// 获取k级PNN的内容
+#define PPN(va,level) ((((uint64) (va)) >> PPN_SHIFT(level)) & PPN_MASK)
+
+// satp 寄存器相关
+
+// 使用 riscv 的 sv39 分页方案 (模式 8)
+#define SATP_SV39 (8L << 60)
+
+// 从一个页表的物理地址创建 satp 寄存器的值
+#define MAKE_SATP(pagetable) (SATP_SV39 | (((uint64)pagetable) >> 12))
+
+#define MSTATUS_MPP_MASK (3L << 11) // previous mode.
+#define MSTATUS_MPP_M (3L << 11)
+#define MSTATUS_MPP_S (1L << 11)
+#define MSTATUS_MPP_U (0L << 11)
+
+
+// 中断
+#define INTR_MASK (1L<<63)
+
+
+// 写 satp 寄存器
+static __attribute__((unused)) void w_satp(uint64 x) {
+    asm volatile("csrw satp, %0" : : "r" (x));
+}
+
+// 刷新 TLB
+static __attribute__((unused)) void sfence_vma() {
+    // a0 和 a1 寄存器在这里是 zero, zero，意思是刷新所有 TLB 条目
     asm volatile("sfence.vma zero, zero");
+}
+
+static __attribute__((unused)) uint64
+r_mstatus() {
+    uint64 x;
+    asm volatile("csrr %0, mstatus" : "=r" (x) );
+    return x;
+}
+
+static __attribute__((unused)) void
+w_mstatus(uint64 x) {
+    asm volatile("csrw mstatus, %0" : : "r" (x));
+}
+
+static __attribute__((unused)) void
+w_mepc(uint64 x) {
+    asm volatile("csrw mepc, %0" : : "r" (x));
+}
+
+// Machine Exception Delegation
+static __attribute__((unused)) uint64
+r_medeleg() {
+    uint64 x;
+    asm volatile("csrr %0, medeleg" : "=r" (x) );
+    return x;
+}
+
+static __attribute__((unused)) void
+w_medeleg(uint64 x) {
+    asm volatile("csrw medeleg, %0" : : "r" (x));
+}
+
+// Machine Interrupt Delegation
+static __attribute__((unused)) uint64
+r_mideleg() {
+    uint64 x;
+    asm volatile("csrr %0, mideleg" : "=r" (x) );
+    return x;
+}
+
+static __attribute__((unused)) void
+w_mideleg(uint64 x) {
+    asm volatile("csrw mideleg, %0" : : "r" (x));
+}
+
+static __attribute__((unused)) uint64
+r_satp() {
+    uint64 x;
+    asm volatile("csrr %0, satp" : "=r" (x) );
+    return x;
+}
+
+// Supervisor Interrupt Enable
+#define SIE_SEIE (1L << 9) // external
+#define SIE_STIE (1L << 5) // timer
+
+static __attribute__((unused)) uint64
+r_sie() {
+    uint64 x;
+    asm volatile("csrr %0, sie" : "=r" (x) );
+    return x;
+}
+
+static __attribute__((unused)) void
+w_sie(uint64 x) {
+    asm volatile("csrw sie, %0" : : "r" (x));
+}
+
+#define SIE_STIE (1L << 5)    // Supervisor Timer Interrupt Enable bit in sie
+#define SSTATUS_SPP (1L << 8)  // Previous mode, 1=Supervisor, 0=User
+#define SSTATUS_SPIE (1L << 5) // Supervisor Previous Interrupt Enable
+#define SSTATUS_UPIE (1L << 4) // User Previous Interrupt Enable
+#define SSTATUS_SIE (1L << 1)  // Supervisor Interrupt Enable
+#define SSTATUS_UIE (1L << 0)  // User Interrupt Enable
+
+static __attribute__((unused)) uint64
+r_sstatus(void) {
+    uint64 x;
+    asm volatile("csrr %0, sstatus" : "=r" (x));
+    return x;
+}
+
+static __attribute__((unused)) void
+w_sstatus(uint64 x) {
+    asm volatile("csrw sstatus, %0" : : "r" (x));
+}
+
+// Physical Memory Protection
+static __attribute__((unused)) void
+w_pmpcfg0(uint64 x) {
+    asm volatile("csrw pmpcfg0, %0" : : "r" (x));
+}
+
+static __attribute__((unused)) void
+w_pmpaddr0(uint64 x) {
+    asm volatile("csrw pmpaddr0, %0" : : "r" (x));
+}
+
+// Supervisor Trap Cause
+static __attribute__((unused)) uint64
+r_scause() {
+    uint64 x;
+    asm volatile("csrr %0, scause" : "=r" (x) );
+    return x;
+}
+
+static __attribute__((unused)) uint64
+r_sepc() {
+    uint64 x;
+    asm volatile("csrr %0, sepc" : "=r" (x) );
+    return x;
+}
+
+static __attribute__((unused)) void
+w_sepc(uint64 x) {
+    asm volatile("csrw sepc, %0" : : "r" (x));
+}
+
+// Supervisor Trap-Vector Base Address
+// low two bits are mode.
+static __attribute__((unused)) void
+w_stvec(uint64 x) {
+    asm volatile("csrw stvec, %0" : : "r" (x));
+}
+
+
+// Machine-mode Interrupt Enable
+#define MIE_STIE (1L << 5)  // supervisor timer
+
+static __attribute__((unused)) uint64
+r_mie() {
+    uint64 x;
+    asm volatile("csrr %0, mie" : "=r" (x) );
+    return x;
+}
+
+static __attribute__((unused)) void
+w_mie(uint64 x) {
+    asm volatile("csrw mie, %0" : : "r" (x));
+}
+
+// Machine Environment Configuration Register
+static __attribute__((unused)) uint64
+r_menvcfg() {
+    uint64 x;
+    // asm volatile("csrr %0, menvcfg" : "=r" (x) );
+    asm volatile("csrr %0, 0x30a" : "=r" (x) );
+    return x;
+}
+
+static __attribute__((unused)) void
+w_menvcfg(uint64 x) {
+    // asm volatile("csrw menvcfg, %0" : : "r" (x));
+    asm volatile("csrw 0x30a, %0" : : "r" (x));
+}
+
+// Machine-mode Counter-Enable
+static __attribute__((unused)) void
+w_mcounteren(uint64 x) {
+    asm volatile("csrw mcounteren, %0" : : "r" (x));
+}
+
+static __attribute__((unused)) uint64
+r_mcounteren() {
+    uint64 x;
+    asm volatile("csrr %0, mcounteren" : "=r" (x) );
+    return x;
+}
+
+// machine-mode cycle counter
+static __attribute__((unused)) uint64
+r_time() {
+    uint64 x;
+    asm volatile("csrr %0, time" : "=r" (x) );
+    return x;
+}
+
+// Supervisor Timer Comparison Register
+static __attribute__((unused)) uint64
+r_stimecmp() {
+    uint64 x;
+    // asm volatile("csrr %0, stimecmp" : "=r" (x) );
+    asm volatile("csrr %0, 0x14d" : "=r" (x) );
+    return x;
+}
+
+static __attribute__((unused)) void
+w_stimecmp(uint64 x) {
+    // asm volatile("csrw stimecmp, %0" : : "r" (x));
+    asm volatile("csrw 0x14d, %0" : : "r" (x));
+}
+
+static __attribute__((unused)) uint64
+r_mhartid() {
+    uint64 x;
+    asm volatile("csrr %0, mhartid" : "=r" (x) );
+    return x;
+}
+
+static __attribute__((unused)) uint64
+r_tp() {
+    uint64 x;
+    asm volatile("mv %0, tp" : "=r" (x) );
+    return x;
+}
+
+static __attribute__((unused)) void
+w_tp(uint64 x) {
+    asm volatile("mv tp, %0" : : "r" (x));
+}
+
+// enable device interrupts
+static __attribute__((unused)) void
+intr_on() {
+    w_sstatus(r_sstatus() | SSTATUS_SIE);
+}
+
+// disable device interrupts
+static __attribute__((unused)) void
+intr_off() {
+    w_sstatus(r_sstatus() & ~SSTATUS_SIE);
+}
+
+static __attribute__((unused)) int
+intr_get() {
+    uint64 x = r_sstatus();
+    return (x & SSTATUS_SIE) != 0;
+}
+
+#define QEMU_POWEROFF_ADDR 0x100000
+#define QEMU_POWEROFF_VALUE 0x5555
+#define QEMU_REBOOT_VALUE 0x7777
+
+// 关机
+static __attribute__((unused)) void shutdown(void) {
+    *(volatile uint32 *) QEMU_POWEROFF_ADDR = QEMU_POWEROFF_VALUE;
+}
+
+// 重启
+static __attribute__((unused)) void reboot(void) {
+    *(volatile uint32 *) QEMU_POWEROFF_ADDR = QEMU_REBOOT_VALUE;
 }
 
 #endif // __ASSEMBLER__
 
-#endif
+#endif //RISCV_H

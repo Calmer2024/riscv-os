@@ -1,4 +1,3 @@
-// 作用: 定义进程、上下文和陷阱帧，这是保存CPU状态的“容器”。
 #ifndef __PROC_H__
 #define __PROC_H__
 
@@ -8,7 +7,8 @@
 
 #define NPROC 64 // 最大进程数
 
-// 上下文结构体 (用于 swtch)
+// 上下文结构体
+// 用于 swtch
 // 仅保存被调用者寄存器（Callee-saved）
 struct context {
     uint64 ra;
@@ -40,40 +40,42 @@ struct cpu {
 // 进程状态
 enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-// 核心进程结构体
+// 进程结构体
 struct proc {
     struct spinlock lock;     // 保护进程数据的自旋锁
-    enum procstate state;     // 进程状态(UNUSED/USED/RUNNABLE/RUNNING)
+    enum procstate state;     // 进程状态
     int pid;                  // 进程ID
     struct proc *parent;      // 父进程
 
     uint64 kstack;            // 此进程的内核栈 (虚拟地址)
-    pagetable_t pagetable;    // 进程的页表
-    struct trapframe *trapframe; // 用户陷阱帧 (位于kstack顶部)
-    struct context context;   // 上下文，用于 swtch 切换
+    pagetable_t pagetable;    // [NEW] 进程的用户页表
 
-    uint64 sz;                // 进程内存大小 (bytes)
+    struct trapframe *trapframe; // [MODIFIED] 用户陷阱帧
+    // 注意：trapframe 现在指向一个独立的物理页，
+    // 在用户空间，它被映射到固定虚拟地址 TRAPFRAME
+
+    struct context context;   // 内核上下文 (用于 swtch 切换)
+
+    uint64 sz;                // 进程内存大小 (用户堆大小)
     int exit_status;          // 退出状态码 (供 wait() 读取)
 
+    int killed;
+
     void *chan;               // 如果在 SLEEPING，休眠在哪个通道上
-    char name[16];            // 进程名（调试用）
+    char name[16];            // 进程名 (调试)
 };
 
 extern struct cpu cpus[1]; // 只有一个核心
 extern struct proc proc[NPROC];
 
-// 陷阱帧：就是一个在内存中创建的数据结构，它的唯一目的就是完整保存当陷阱发生时，CPU 的完整执行状态（上下文）
-// 寄存器上下文，由kernelvec.S保存
-// 32个通用寄存器 (x0-x31)
-// sepc: 发生陷阱时指令的地址
-// sstatus: 状态寄存器
+// 陷阱帧：由 uservec.S (trampoline) 保存
+// 严格对应 struct trapframe 的内存布局
 struct trapframe {
     uint64 kernel_satp;   // 内核页表
     uint64 kernel_sp;     // 内核栈顶
-    uint64 kernel_trap;   // kerneltrap()函数的地址
-    uint64 epc;           // sepc寄存器
-    uint64 kernel_hartid; // cpuid，我们单核不需要
-    // 相关寄存器，存档程序计算时的临时数据、参数、返回值等
+    uint64 kernel_trap;   // usertrap()函数的地址
+    uint64 epc;           // sepc寄存器 (用户PC)
+    uint64 kernel_hartid; // cpuid
     uint64 ra;
     uint64 sp;
     uint64 gp;
@@ -107,16 +109,20 @@ struct trapframe {
     uint64 t6;
 };
 
-
-
 // 进程管理函数原型
 void proc_init(void);
 struct proc* alloc_process(void);
 void free_process(struct proc *p);
-void proc_init_main(void);
-int create_kthread(void (*entry)(void));
-void kthread_exit(int status);
-int kthread_wait(int *status);
+int kwait(uint64 addr);
+void kexit(int status);
+
+// 用户进程支持函数
+pagetable_t proc_pagetable(struct proc *p);
+void proc_freepagetable(pagetable_t pagetable, uint64 sz);
+void userinit(void);
+int fork(void);
+// ------------------------------
+
 void scheduler(void) __attribute__((noreturn));
 void swtch(struct context *old, struct context *new);
 void yield(void);
@@ -127,6 +133,7 @@ void wakeup(void *chan);
 struct cpu* mycpu(void);
 struct proc* myproc(void);
 
+// 陷阱返回
 void usertrapret(void);
 
 #endif

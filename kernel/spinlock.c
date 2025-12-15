@@ -11,9 +11,11 @@ void initlock(struct spinlock *lk, char *name) {
 void acquire(struct spinlock *lk) {
     // 在单核机器上，锁的实现实际上是通过关中断实现的
     push_off(); // 关中断
-    // 检查重入，如果自己拿了自己的锁，需要处理重用
-    if(lk->locked && lk->cpu == mycpu()->proc->pid) {
-        // panic("acquire");
+    // 先检查不为NULL，再检查重入，如果自己拿了自己的锁，需要处理重用
+    if(lk->locked && mycpu()->proc && lk->cpu == mycpu()->proc->pid) {
+        panic("acquire");
+        // 实际上单核死锁最好直接死循环卡住现场，方便调试，而不是 panic (panic又会调printf导致递归)
+        // while(1);
     }
 
     // 使用GCC内置原子操作，等待锁被释放

@@ -2,6 +2,7 @@
 #include "../include/printf.h"
 #include "../include/riscv.h"
 #include "../include/trap.h"
+#include "../include/proc.h"
 
 // 使用内联汇编执行SBI调用
 // OpenSBI检查 a7 和 a6 寄存器，明白S-Mode是想调用“时间扩展”的“设置定时器”功能。OpenSBI读取 a0 寄存器，得到我们设定的目标时间。核心操作：OpenSBI执行只有M-Mode才能执行的特权指令，将这个目标时间写入到物理时钟硬件 (CLINT) 的 mtimecmp 寄存器中。
@@ -47,13 +48,13 @@ void clockintr(void) {
     ticks++;
     g_ticks_count++;
     
-    // 3. 触发任务调度 (未来)
-    // yield();
+    // 3. 触发任务调度
+    yield();
 
     // 打印信息用于调试
-    if (ticks % 100 == 0) {
-        printf("tick %u\n", ticks);
-    }
+    // if (ticks % 100 == 0) {
+    //     printf("tick %u\n", ticks);
+    // }
 }
 
 // 时钟模块初始化

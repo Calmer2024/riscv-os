@@ -80,6 +80,10 @@ void unregister_interrupt_handler(int irq) {
 void kerneltrap(struct trapframe *tf) {
     uint64 scause = r_scause();
     uint64 sepc = r_sepc();
+    uint64 sstatus = r_sstatus();
+
+    if((sstatus & SSTATUS_SPP) == 0)
+        panic("kerneltrap: not from supervisor mode");
 
     // 判断是中断还是异常
     if (scause & (1UL << 63)) { // 中断
@@ -102,8 +106,11 @@ void kerneltrap(struct trapframe *tf) {
 }
 
 
-// 用户陷阱处理 (由 uservec.S 调用)
+// 用户陷阱处理 (由 uservec 调用)
 void usertrap(void) {
+    w_stvec((uint64)kernelvec);
+    printf("usertrap enter: scause=%p sepc=%p pid=%d\n",
+       r_scause(), r_sepc(), myproc()->pid);
     uint64 scause = r_scause();
     struct proc *p = myproc();
 
@@ -122,17 +129,21 @@ void usertrap(void) {
         // ecall 会使 epc + 4
         p->trapframe->epc += 4;
 
+        if(p->killed)
+            kexit(-1);
         syscall_dispatch(); // 调用分发器
+        if(p->killed)
+            kexit(-1);
 
-    } else if (scause == (1L << 63 | 5)) { // S-Mode Timer Interrupt
+    } else if (scause == (1L << 63 | 5)) { // S-Mode Timer Interrupt (时钟中断)
         // 时钟中断 (来自 S-Mode)
         // (你需要配置时钟... 假设已配置)
 
         // 强制放弃 CPU (抢占)
         yield();
 
-    } else if (scause == 13 || scause == 15) { // Page Fault
-        handle_page_fault(p->trapframe); // 来自你的 vm.h
+    } else if (scause == 13 || scause == 15) { // Page Fault (缺页错误)
+        handle_page_fault(p->trapframe);
 
     } else {
         printf("usertrap: unexpected scause %p, pid=%d\n", scause, p->pid);

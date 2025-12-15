@@ -1,4 +1,4 @@
-#include "../include/syscall.h" // 包含 SYS_fork 等定义
+#include "../include/syscall.h"
 
 # 定义一个宏来创建桩代码
 .macro SYSCALL name, num

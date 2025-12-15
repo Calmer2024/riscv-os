@@ -43,5 +43,6 @@ void console_putc(char c);
 void console_puts(const char *s);
 void console_clear(void);
 void console_set_color(uint8_t fg_color, uint8_t bg_color);
+void console_enter_panic(void);
 
 #endif

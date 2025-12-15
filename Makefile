@@ -15,8 +15,7 @@ LDFLAGS = -g -T kernel/kernel.ld -nostdlib
 S_SRCS = kernel/entry.S \
          kernel/kernelvec.S \
          kernel/swtch.S \
-         user/usys.S \
-         kernel/uservec.S
+         kernel/trampoline.S
 
 # C源文件
 C_SRCS = kernel/main.c \
@@ -31,6 +30,7 @@ C_SRCS = kernel/main.c \
          kernel/spinlock.c \
          kernel/syscall.c \
          kernel/sysproc.c \
+         kernel/sysfile.c \
          kernel/test.c \
          lib/string.c \
 

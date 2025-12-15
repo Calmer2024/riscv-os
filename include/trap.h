@@ -18,8 +18,10 @@ enum riscv_interrupts {
     // ...
     MAX_IRQ      = 16  // 中断号上限，假设最多支持16种中断
 };
-
 // 中断控制接口
+void usertrap(void);
+void usertrapret(void);
+void kerneltrap(struct trapframe *tf);
 void trap_init_hart(void); // 初始化当前CPU核心的中断系统
 void register_interrupt_handler(int irq, interrupt_handler_t handler); // 中断注册函数
 void unregister_interrupt_handler(int irq); // 中断注销函数

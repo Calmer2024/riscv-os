@@ -1,61 +1,43 @@
-// include/memlayout.h
-#ifndef __MEMLAYOUT_H__
-#define __MEMLAYOUT_H__
+#ifndef MEMLAYOUT_H
+#define MEMLAYOUT_H
 
-// ==========================================
-// 1. 物理内存布局 (Physical Memory Layout)
-//    这些地址由 QEMU 的 "virt" 机器模型决定
-// ==========================================
+#include "riscv.h"
 
-#define UART0           0x10000000L
-#define UART0_IRQ       10
+#define VIRTIO0 0x10001000
 
-#define VIRTIO0         0x10001000L
-#define VIRTIO0_IRQ     1
+#define UART0 0x10000000L
+// UART的中断号为10
+#define UART_IRQ 10
+// virtio0中断号为1
+#define VIRTIO0_IRQ 1
+
+#define KERNBASE 0x80000000L // 内核起始地址
+#define PHYSTOP (KERNBASE + 128 * 1024 * 1024) // 内核接管的物理最高地址
 
 #define CLINT           0x2000000L
-#define PLIC            0x0c000000L
 
-// 物理内存起始地址（内核加载的位置）
-#define KERNBASE        0x80200000L
-// 物理内存结束地址 (128MB)
-// 物理 RAM 通常从 0x80000000 开始。
-// 即使内核加载在 0x80200000，物理内存的硬件上限依然是 0x80000000 + 128M
-#define PHY_RAM_BASE    0x80000000L
-#define PHYSTOP         (PHY_RAM_BASE + 128*1024*1024)
+// PLIC映射的内存地址
+#define PLIC 0x0c000000L
+#define PLIC_PRIORITY (PLIC + 0x0)
+#define PLIC_PENDING (PLIC + 0x1000)
+#define PLIC_SENABLE(hart) (PLIC + 0x2080 + (hart)*0x100)
+#define PLIC_SPRIORITY(hart) (PLIC + 0x201000 + (hart)*0x2000)
+#define PLIC_SCLAIM(hart) (PLIC + 0x201004 + (hart)*0x2000)
 
-// ==========================================
-// 2. 虚拟内存布局 (Virtual Memory Layout)
-//    RISC-V Sv39 模式
-// ==========================================
-
-#define PGSIZE          4096
-
-// RISC-V Sv39 模式下的最大虚拟地址 (2^38 - 1 ≈ 256GB)
+// 用户能访问到的最高虚拟内存地址
 #define MAXVA           (1L << 38)
+#define MAX_USER_VA (MAX_VIRTUAL_ADDR>>1)
+#define USER_STACK_VA (MAX_USER_VA-PAGE_SIZE) //用户栈的虚拟地址
 
-// --- 内核的高端映射区 ---
+// 内核的虚拟地址空间
+#define TRAMPOLINE (MAX_VIRTUAL_ADDR - PAGE_SIZE) // <-- 跳板代码页 (S/U 模式均可访问, 可执行)
+#define TRAPFRAME (TRAMPOLINE - PAGE_SIZE) // <-- 中断帧数据页 (struct trapframe)
+#define KERNEL_STACK(p) (TRAMPOLINE - ((p)+1)* 2*PAGE_SIZE) // 进程p的内核栈
+#define VKSTACK(p)(p) (TRAMPOLINE - ((p)+1)* 2*PAGE_SIZE) // 进程p的内核栈
 
-// 1. 蹦床页面 (Trampoline)
-//    映射在虚拟地址的最顶端。用于进出内核的“跳板”。
-#define TRAMPOLINE      (MAXVA - PGSIZE)
-
-// 2. 陷阱帧 (Trapframe)
-//    紧挨着蹦床下面。用于保存用户进程的寄存器。
-#define TRAPFRAME       (TRAMPOLINE - PGSIZE)
-
-// 3. 内核栈 (Kernel Stacks)
-//    每个进程都有一个独立的内核栈，映射在高地址。
-//    VKSTACK 计算公式：根据进程索引 p 计算其栈的虚拟地址
-//    布局：[Guard Page] [Stack] [Guard Page] [Stack] ... [Trampoline]
-#define VKSTACK(p)      (TRAMPOLINE - ((p)+1) * 2 * PGSIZE)
 
 // 链接脚本提供的符号
 extern char etext[]; // 代码段结束
 extern char end[];   // 内核结束
 
-// 辅助宏
-#define PGROUNDUP(sz)  (((sz)+PGSIZE-1) & ~(PGSIZE-1))
-#define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))
-
-#endif
+#endif //MEMLAYOUT_H

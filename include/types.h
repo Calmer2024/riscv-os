@@ -4,23 +4,16 @@
 #ifndef __ASSEMBLER__
 
 #include <stdint.h>
+typedef unsigned int   uint;
+typedef unsigned short ushort;
+typedef unsigned char  uchar;
 
-// 标准整数类型定义
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-typedef unsigned int uint32_t;
-typedef unsigned long uint64_t;
+typedef unsigned char uint8;
+typedef unsigned short uint16;
+typedef unsigned int  uint32;
+typedef unsigned long uint64;
 
-typedef signed char int8_t;
-typedef signed short int16_t;
-typedef signed int int32_t;
-typedef signed long int64_t;
-
-// 提供更简洁的别名
-typedef uint64_t uint64;
-typedef uint32_t uint32;
-typedef uint16_t uint16;
-typedef uint8_t  uint8;
+typedef uint64 pde_t;
 
 // 标准类型定义
 typedef uint64_t size_t;

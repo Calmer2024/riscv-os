@@ -21,15 +21,4 @@ void release(struct spinlock *lk);
 void push_off(void);
 void pop_off(void);
 
-// 辅助函数
-static inline void intr_off() {
-    w_sstatus(r_sstatus() & ~SSTATUS_SIE);
-}
-static inline void intr_on() {
-    w_sstatus(r_sstatus() | SSTATUS_SIE);
-}
-static inline int intr_get() {
-    return (r_sstatus() & SSTATUS_SIE);
-}
-
 #endif

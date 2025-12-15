@@ -8,8 +8,8 @@
 // -----------------------------------------------------------------
 
 // 系统调用号
-#define SYS_fork    1
-#define SYS_exit    2
+#define SYS_exit    1
+#define SYS_fork    2
 #define SYS_wait    3
 #define SYS_kill    4
 #define SYS_getpid  5
@@ -18,6 +18,7 @@
 #define SYS_read    8
 #define SYS_write   9
 #define SYS_sbrk    10
+#define SYS_test    11
 
 
 // -----------------------------------------------------------------
