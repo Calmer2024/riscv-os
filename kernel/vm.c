@@ -1,737 +1,554 @@
 #include "../include/types.h"
 #include "../include/riscv.h"
-#include "../include/pmm.h"
-#include "../include/vm.h"
 #include "../include/memlayout.h"
-#include "../include/string.h"
+#include "../include/kalloc.h"
 #include "../include/printf.h"
-#include "../include/stddef.h"
 #include "../include/proc.h"
+#include "../include/string.h"
 
-// 声明由链接脚本提供的符号
-extern char etext[]; // 内核代码段(.text)的结束地址
-// 声明外部定义的蹦床代码
-extern char trampoline[];
+// 内核根页表
+pagetable_t kernel_root_pagetable;
 
-// kernel_pagetable 是内核页表的指针
-pagetable_t kernel_pagetable;
+// 内核代码段结束地址
+extern char etext[];
+extern char ptrampoline[]; // trampoline.S
 
-// 内部辅助函数声明
-pte_t* walk(pagetable_t pagetable, uint64 va, int alloc);
-void   uvmfree(pagetable_t pagetable, uint64 sz);
-pte_t* walk_create(pagetable_t pt, uint64 va);
-void free_walk(pagetable_t pt);
-void dump_walk(pagetable_t pt, int level, uint64 current_va);
 
-// ====================================================================
-// Core Mapping Logic (核心映射逻辑)
-// ====================================================================
-
-pte_t*
-walk(pagetable_t pagetable, uint64 va, int alloc)
-{
-    if(va >= MAXVA)
-        panic("walk");
-
-    for(int level = 2; level > 0; level--) {
-        pte_t *pte = &pagetable[PX(level, va)];
-        if(*pte & PTE_V) {
-            pagetable = (pagetable_t)PTE2PA(*pte);
-        } else {
-            if(!alloc || (pagetable = (pagetable_t)alloc_page()) == 0)
-                return 0;
-            memset(pagetable, 0, PAGE_SIZE);
-            *pte = PA2PTE(pagetable) | PTE_V;
-        }
-    }
-    return &pagetable[PX(0, va)];
-}
-
-// 查找虚拟地址 va 对应的物理地址 (仅用于用户地址)
-// 如果未映射或权限不对，返回 0
-uint64
-walkaddr(pagetable_t pagetable, uint64 va)
-{
-    pte_t *pte;
-    uint64 pa;
-
-    if(va >= MAXVA)
-        return 0;
-
-    pte = walk(pagetable, va, 0);
-    if(pte == 0)
-        return 0;
-    if((*pte & PTE_V) == 0)
-        return 0;
-    if((*pte & PTE_U) == 0) // 必须是用户页
-        return 0;
-
-    pa = PTE2PA(*pte);
-    return pa;
-}
-
-// [通用映射函数]
-// 将虚拟地址范围 [va, va+size] 映射到物理地址 pa
-// 这是一个核心函数，替换了你之前的 kvmmap 和 map_page
-int
-mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
-{
-    uint64 a, last;
-    pte_t *pte;
-
-    if(size == 0)
-        panic("mappages: size");
-
-    a = PGROUNDDOWN(va);
-    last = PGROUNDDOWN(va + size - 1);
-
-    for(;;){
-        if((pte = walk(pagetable, a, 1)) == 0)
-            return -1;
-        if(*pte & PTE_V)
-            panic("mappages: remap");
-
-        *pte = PA2PTE(pa) | perm | PTE_V;
-
-        if(a == last)
-            break;
-        a += PAGE_SIZE;
-        pa += PAGE_SIZE;
-    }
-    return 0;
-}
-
-// void kvmmap(pagetable_t kpt, uint64 va, uint64 pa, uint64 sz, int perm) {
-//     uint64 a = PGROUNDDOWN(va);
-//     uint64 last = PGROUNDDOWN(va + sz - 1);
-//
-//     for(;;){
-//         if(map_page(kpt, a, pa, perm) != 0)
-//             panic("kvmmap");
-//
-//         if(a == last)
-//             break;
-//
-//         a += PAGE_SIZE;
-//         pa += PAGE_SIZE;
-//     }
-// }
-
-// ====================================================================
-// Kernel VM Initialization (内核虚存初始化)
-// ====================================================================
-
-// 映射内核栈的辅助函数
-void proc_mapstacks(pagetable_t kpt) {
-    struct proc *p;
-
-    for(int i = 0; i < NPROC; i++) {
-        p = &proc[i];
-        // 1. 分配一个物理页作为栈
-        char *pa = alloc_page();
-        if(pa == 0) panic("kvminit: kstack alloc failed");
-
-        // 2. 计算这个进程对应的内核栈虚拟地址
-        //    使用我们在 memlayout.h 里定义的公式
-        uint64 va = VKSTACK(i);
-
-        // 3. 映射到内核页表
-        //    注意：我们只映射了一页 (PAGE_SIZE)。如果栈溢出，会碰到下面的 Guard Page (未映射)，触发 Panic。
-        // kvmmap(kpt, va, (uint64)pa, PAGE_SIZE, PTE_R | PTE_W);
-        mappages(kpt, va, PAGE_SIZE, (uint64)pa, PTE_R | PTE_W);
-
-        // 4. 记录在进程结构体中，方便后续使用
-        //    注意：这里我们暂时不加锁，因为还在单核启动阶段
-        p->kstack = va;
-    }
-}
-
-// 创建内核页表
-pagetable_t kvmmake(void) {
-    pagetable_t kpt = (pagetable_t)alloc_page();
-    memset(kpt, 0, PAGE_SIZE);
-
-    // 1. UART
-    mappages(kpt, UART0, PAGE_SIZE, UART0, PTE_R | PTE_W);
-    // 2. VIRTIO0
-    mappages(kpt, VIRTIO0, PAGE_SIZE, VIRTIO0, PTE_R | PTE_W);
-    // 3. PLIC
-    mappages(kpt, PLIC, 0x400000, PLIC, PTE_R | PTE_W);
-    // 4. CLINT
-    mappages(kpt, CLINT, 0x10000, CLINT, PTE_R | PTE_W);
-    // 5. Kernel Text (R-X)
-    mappages(kpt, KERNBASE, (uint64)etext - KERNBASE, KERNBASE, PTE_R | PTE_X);
-    // 6. Kernel Data + RAM (RW-)
-    mappages(kpt, (uint64)etext, PHYSTOP - (uint64)etext, (uint64)etext, PTE_R | PTE_W);
-    // 7. Trampoline (RX) - [关键] 内核页表也必须映射蹦床
-    mappages(kpt, TRAMPOLINE, PAGE_SIZE, (uint64)trampoline, PTE_R | PTE_X);
-
-    return kpt;
-}
-
-void kvminit(void) {
-    printf("kvminit: creating kernel pagetable...\n");
-    kernel_pagetable = kvmmake();
-
-    // 映射所有进程的内核栈
-    printf("kvminit: mapping kernel stacks...\n");
-    proc_mapstacks(kernel_pagetable);
-}
-
-void kvminithart(void) {
-    printf("kvminithart: enabling paging...\n");
-    w_satp(MAKE_SATP(kernel_pagetable));
-    sfence_vma();
-    printf("kvminithart: paging enabled.\n");
-}
-
-// ====================================================================
-// User VM Management (用户虚拟内存管理)
-// ====================================================================
-// 创建一个空的用户页表
-pagetable_t uvmcreate() {
-    pagetable_t pagetable;
-    pagetable = (pagetable_t)alloc_page();
-    if(pagetable == 0)
-        return 0;
+// 创建一个页表，然后填充0，返回该页表的首地址
+// 如果内存耗尽返回0（目前kmem_alloc会panic）
+pagetable_t vmem_create_pagetable(void) {
+    // 分配一个物理页
+    pagetable_t pagetable = kmem_alloc();
+    if (!pagetable) return 0; // 物理页分配失败
     memset(pagetable, 0, PAGE_SIZE);
     return pagetable;
 }
 
-// 加载 initcode 到用户页表的起始位置 (用于第一个进程)
-// src: initcode 的二进制代码, sz: 大小
-void uvminit(pagetable_t pagetable, uchar *src, uint sz) {
-    char *mem;
-
-    if(sz >= PAGE_SIZE)
-        panic("inituvm: more than a page");
-
-    mem = alloc_page();
-    memset(mem, 0, PAGE_SIZE);
-
-    // 映射地址 0 到 物理地址 mem
-    mappages(pagetable, 0, PAGE_SIZE, (uint64)mem, PTE_W|PTE_R|PTE_X|PTE_U);
-
-    // 拷贝代码
-    memmove(mem, src, sz);
-}
-
-// 解除映射
-// va: 虚拟地址 (必须页对齐)
-// npages: 页数
-// do_free: 是否释放对应的物理页
-void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
-    uint64 a;
-    pte_t *pte;
-
-    if((va % PAGE_SIZE) != 0)
-        panic("uvmunmap: not aligned");
-
-    for(a = va; a < va + npages*PAGE_SIZE; a += PAGE_SIZE){
-        if((pte = walk(pagetable, a, 0)) == 0)
-            panic("uvmunmap: walk");
-
-        if((*pte & PTE_V) == 0)
-            panic("uvmunmap: not mapped");
-
-        if(PTE_FLAGS(*pte) == PTE_V)
-            panic("uvmunmap: not a leaf");
-
-        if(do_free){
-            uint64 pa = PTE2PA(*pte);
-            free_page((void*)pa);
-        }
-        *pte = 0; // 清除 PTE
+// 根据虚拟地址 virtual_addr 找到对应的页表项，返回页表项的地址
+// 如果alloc非0，则分配物理内存，并设置页表项
+// 仿照xv6的写法，在查找的过程中根据alloc决定是否创建
+// 如果没找到，返回0
+pte_t *vmem_walk_pte(pagetable_t pagetable, uint64 virtual_addr, int alloc) {
+    if (virtual_addr >= MAX_VIRTUAL_ADDR) {
+        panic("vmem_walk: too large virtual address");
     }
-}
-
-// 释放用户内存 (解除映射)
-// 将大小从 oldsz 减少到 newsz
-uint64 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
-    if(newsz >= oldsz)
-        return oldsz;
-
-    if(PGROUNDUP(newsz) < PGROUNDUP(oldsz)){
-        int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PAGE_SIZE;
-        uvmunmap(pagetable, PGROUNDUP(newsz), npages, 1);
-    }
-
-    return newsz;
-}
-
-// 分配用户内存 (用于 sbrk 或 exec)
-// oldsz: 旧的大小, newsz: 新的大小
-uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm) {
-    char *mem;
-    uint64 a;
-
-    if(newsz < oldsz)
-        return oldsz;
-
-    oldsz = PGROUNDUP(oldsz);
-    for(a = oldsz; a < newsz; a += PAGE_SIZE){
-        mem = alloc_page();
-        if(mem == 0){
-            uvmdealloc(pagetable, a, oldsz); // 失败时回滚
-            return 0;
-        }
-        memset(mem, 0, PAGE_SIZE);
-        if(mappages(pagetable, a, PAGE_SIZE, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
-            free_page(mem);
-            uvmdealloc(pagetable, a, oldsz);
-            return 0;
+    // 逐层获取
+    for (int level = 2; level > 0; level--) {
+        int index = PPN(virtual_addr, level); // k级页表内的索引
+        pte_t *pte = pagetable + index; // 获取页表项的地址
+        if (*pte & PTE_V) {
+            // 该页有效，已经存在
+            pagetable = (pagetable_t) PTE_TO_PA(*pte);
+        } else {
+            if (!alloc) return 0; // 不分配，直接失败
+            pagetable = vmem_create_pagetable(); // 分配一个物理页
+            if (!pagetable) return 0; // 物理页分配失败，目前 kmem_alloc 会直接panic
+            // 回到上一级的PTE（*pte）把刚申请到的新页表的物理地址填进去，
+            // 并把它标记为有效。（只会标记三级和二级的，一级的不会标记）
+            *pte = PA_TO_PTE(pagetable) | PTE_V;
         }
     }
-    return newsz;
+    // 返回最终的、第三级PTE的地址
+    // 循环结束后，pagetable 变量已经指向了最底层的、第三级的页表。
+    // 最终返回这个PTE的地址，让调用者去填写。
+    int index = PPN(virtual_addr, 0);
+    return pagetable + index;
 }
 
-// 递归释放页表页面 (但不释放叶子节点指向的物理页，那是 uvmunmap 的工作)
-void freewalk(pagetable_t pagetable) {
-    for(int i = 0; i < 512; i++){
+// 映射一个页表（va->pa）
+// permission：权限位，对应PTE的R,W,X,U,G,A,D,RWXUGA，一般用到RWX
+// TODO:这个操作不是原子的，分配失败没有释放
+int vmem_map_pagetable(pagetable_t pagetable, uint64 virtual_addr, uint64 physical_addr, int permission) {
+    if (virtual_addr % PAGE_SIZE != 0) {
+        panic("vmem_map_pagetable: virtual_addr not aligned");
+    }
+    // 物理地址要对齐吗？不对齐会不会混乱？好像不会，PA_TO_PTE会自动对齐，但是感觉对齐还是比较好
+    if (physical_addr % PAGE_SIZE != 0) {
+        panic("vmem_map_pagetable: physical_addr not aligned");
+    }
+    pte_t *pte = vmem_walk_pte(pagetable, virtual_addr, 1);
+    if (pte == 0) return -1; // 创建页表项失败
+    if (*pte & PTE_V) {
+        // 该页已经存在并且被映射过
+        panic("vmem_map_pagetable: remap pagetable");
+    }
+    *pte = PA_TO_PTE(physical_addr) | (permission & 0x1fe) | PTE_V;
+    return 0;
+}
+
+// 解除映射，如果do_free为真，则同时释放物理页，va必须对齐
+int vmem_unmap_pagetable(pagetable_t pagetable, uint64 virtual_addr, int do_free) {
+    if (virtual_addr % PAGE_SIZE != 0) {
+        panic("vmem_unmap_pagetable: virtual_addr not aligned");
+    }
+    // 1. 查找PTE，但不创建
+    pte_t *pte = vmem_walk_pte(pagetable, virtual_addr, 0);
+    // 2. 检查是否真的映射了
+    if (pte == 0) {
+        return -1; // 没有找到页表项 (可能是L1或L2目录不存在)
+    }
+    if ((*pte & PTE_V) == 0) {
+        return -1; // 该页未映射
+    }
+
+    // 释放物理内存
+    if (do_free) {
+        uint64 pa = PTE_TO_PA(*pte);
+        kmem_free((void*)pa);
+    }
+
+    // 5. 将PTE清零，使其无效
+    *pte = 0;
+
+    return 0; // 成功
+}
+
+
+// 递归地释放一个页表，如果非叶子节点，先释放下一级的节点
+// 这个函数只负责释放页表所占的内存，不会释放物理页，
+// 释放前要保证物理页的映射已经被移除了，否则会panic
+void vmem_free_pagetable(pagetable_t pagetable) {
+    for (int i = 0; i < LEAF_PTES; i++) {
         pte_t pte = pagetable[i];
-        if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
-            // 是中间节点
-            uint64 child = PTE2PA(pte);
-            freewalk((pagetable_t)child);
+        if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+            // 这个pte有效并且不是叶子节点
+            uint64 child = PTE_TO_PA(pte);
+            // 递归清除子节点
+            vmem_free_pagetable((pagetable_t) child);
+            // 子节点清除完毕，清除自己
             pagetable[i] = 0;
-        } else if(pte & PTE_V){
-            // 是叶子节点，这里不应该发生，因为 uvmfree 应该先 unmap 了
-            // 但如果有的页表只被部分 unmap，这里就会Panic
-            // panic("freewalk: leaf");
+        } else if (pte & PTE_V) {
+            // 这个pte有效但并且是叶子节点
+            panic("vmem_free_pagetable: leaf PTE found");
         }
     }
-    free_page((void*)pagetable);
+    // 释放自身
+    kmem_free(pagetable);
 }
 
-// 释放整个用户进程空间
-// 1. 解除映射并释放物理内存
-// 2. 释放页表本身
-void uvmfree(pagetable_t pagetable, uint64 sz) {
-    if(sz > 0)
-        uvmunmap(pagetable, 0, PGROUNDUP(sz)/PAGE_SIZE, 1);
-    freewalk(pagetable);
-}
+// kernel/vm.c
 
-// 复制父进程内存到子进程 (Fork)
-int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
-    pte_t *pte;
-    uint64 pa, i;
-    uint flags;
-    char *mem;
+// 调试函数：打印单层页表的内容
+// pagetable: 要打印的页表的物理地址
+// level: 当前页表的级别 (2 for L1, 1 for L2, 0 for L3)
+void vmem_pagetable_dump(pagetable_t pagetable, int level) {
+    // 打印表头
+    printf_color("=== Page Table (Level %d) at PA: %p ===\n", PURPLE, level, pagetable);
 
-    for(i = 0; i < sz; i += PAGE_SIZE){
-        if((pte = walk(old, i, 0)) == 0)
-            panic("uvmcopy: pte should exist");
-        if((*pte & PTE_V) == 0)
-            panic("uvmcopy: page not present");
+    // 遍历 512 个 PTE
+    for (int i = 0; i < LEAF_PTES; i++) {
+        pte_t *pte = pagetable + i;
 
-        pa = PTE2PA(*pte);
-        flags = PTE_FLAGS(*pte);
+        // 只打印有效的PTE，忽略无效的
+        if (*pte & PTE_V) {
+            uint64 child_pa = PTE_TO_PA(*pte);
+            printf("  PTE[%d]: %p ", i, pte);
 
-        if((mem = alloc_page()) == 0)
-            goto err;
-
-        memmove(mem, (char*)pa, PAGE_SIZE);
-
-        if(mappages(new, i, PAGE_SIZE, (uint64)mem, flags) != 0){
-            free_page(mem);
-            goto err;
-        }
-    }
-    return 0;
-
- err:
-    uvmunmap(new, 0, i / PAGE_SIZE, 1);
-    return -1;
-}
-
-// ====================================================================
-// Data Copy Helpers (内核 <-> 用户 数据拷贝)
-// ====================================================================
-// 从用户空间拷贝数据到内核
-// 替代了之前的 copy_from_user
-int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len) {
-    uint64 n, va0, pa0;
-
-    while(len > 0){
-        va0 = PGROUNDDOWN(srcva);
-        pa0 = walkaddr(pagetable, va0);
-        if(pa0 == 0)
-            return -1;
-
-        n = PAGE_SIZE - (srcva - va0);
-        if(n > len)
-            n = len;
-
-        memmove(dst, (void *)(pa0 + (srcva - va0)), n);
-
-        len -= n;
-        dst += n;
-        srcva = va0 + PAGE_SIZE;
-    }
-    return 0;
-}
-
-// 从内核拷贝数据到用户空间
-// 替代了之前的 copy_to_user
-int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
-    uint64 n, va0, pa0;
-
-    while(len > 0){
-        va0 = PGROUNDDOWN(dstva);
-        pa0 = walkaddr(pagetable, va0);
-        if(pa0 == 0)
-            return -1;
-
-        n = PAGE_SIZE - (dstva - va0);
-        if(n > len)
-            n = len;
-
-        memmove((void *)(pa0 + (dstva - va0)), src, n);
-
-        len -= n;
-        src += n;
-        dstva = va0 + PAGE_SIZE;
-    }
-    return 0;
-}
-
-// 为了兼容你之前的命名，做一层封装 (可选)
-int copy_from_user(void *dst, uint64 src, uint64 len) {
-    return copyin(myproc()->pagetable, (char*)dst, src, len);
-}
-
-int copy_to_user(uint64 dst, void *src, uint64 len) {
-    return copyout(myproc()->pagetable, dst, (char*)src, len);
-}
-
-// 从用户虚拟地址空间中，安全地拷贝一个以 \0 结尾的字符串到内核缓冲区
-int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
-{
-    uint64 n, va0, pa0;
-    int got_null = 0;
-
-    while(got_null == 0 && max > 0){
-        va0 = PGROUNDDOWN(srcva);
-        pa0 = walkaddr(pagetable, va0);
-        if(pa0 == 0)
-            return -1;
-        n = PAGE_SIZE - (srcva - va0);
-        if(n > max)
-            n = max;
-
-        char *p = (char *) (pa0 + (srcva - va0));
-        while(n > 0){
-            if(*p == '\0'){
-                *dst = '\0';
-                got_null = 1;
-                break;
+            // 判断是叶子节点还是中间节点
+            if ((*pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+                // 中间节点：V=1, 但 R,W,X=0
+                printf("-> Points to Next Level PT @ PA: %p\n", (void *) child_pa);
             } else {
-                *dst = *p;
+                // 叶子节点：V=1, 且 R,W,X 中至少有一个不为0
+                printf("-> Maps to PA: %p | Perms: ", (void *) child_pa);
+                printf("%c", (*pte & PTE_R) ? 'R' : '-');
+                printf("%c", (*pte & PTE_W) ? 'W' : '-');
+                printf("%c", (*pte & PTE_X) ? 'X' : '-');
+                printf("%c", (*pte & PTE_U) ? 'U' : '-');
+                printf("\n");
             }
-            --n;
-            --max;
-            p++;
-            dst++;
+        }
+    }
+    printf("=== End of Page Table Dump ===\n");
+}
+
+void vmem_init(void) {
+    // 分配一个内核根页表
+    kernel_root_pagetable = vmem_create_pagetable();
+    if (!kernel_root_pagetable) {
+        panic("vmem_init: kernel root pagetable alloc failed");
+    }
+    // 映射VARTIO
+    vmem_map_pagetable(kernel_root_pagetable, VIRTIO0, VIRTIO0, PTE_R | PTE_W);
+
+    // 映射UART串口
+    vmem_map_pagetable(kernel_root_pagetable, UART, UART, PTE_R | PTE_W);
+    vmem_map_pagetable(kernel_root_pagetable, QEMU_POWEROFF_ADDR, QEMU_POWEROFF_ADDR, PTE_R | PTE_W);
+    // 映射PLIC
+    for (uint64 va = PLIC, pa = PLIC; pa < (uint64) (PLIC + 0x4000000); va += PAGE_SIZE, pa += PAGE_SIZE) {
+        vmem_map_pagetable(kernel_root_pagetable, va, pa,PTE_R | PTE_W);
+    }
+    // 映射代码段
+    for (uint64 va = KERNEL_BASE, pa = KERNEL_BASE; pa < (uint64) etext; va += PAGE_SIZE, pa += PAGE_SIZE) {
+        vmem_map_pagetable(kernel_root_pagetable, va, pa,PTE_R | PTE_X);
+    }
+    // 映射内核数据与剩余物理内存
+    for (uint64 va = PAGE_UP((uint64)etext), pa = PAGE_UP((uint64)etext);
+         pa < PHYS_TOP;
+         va += PAGE_SIZE, pa += PAGE_SIZE) {
+        vmem_map_pagetable(kernel_root_pagetable, va, pa,PTE_R | PTE_W);
+    }
+    // 映射跳板页面，内核栈在分配进程的时候进行映射
+    vmem_map_pagetable(kernel_root_pagetable,TRAMPOLINE, (uint64) ptrampoline,PTE_R | PTE_X);
+    printf_color("vmem_init: kernal pagetable created.\n",BLACK);
+}
+
+// 复制一个进程的页表给另一个，用于fork
+int vmem_user_copy(pagetable_t src_pt, pagetable_t dst_pt, uint64 size) {
+    uint64 va;
+    pte_t *pte;
+
+    // 循环遍历父进程 [0, size) 范围内的所有虚拟页
+    for (va = 0; va < size; va += PAGE_SIZE) {
+        // 1. 查找父进程的 PTE
+        pte = vmem_walk_pte(src_pt, va, 0); // alloc=0, 不创建
+        if (pte == 0 || (*pte & PTE_V) == 0) {
+            continue; // 父进程没有映射这页，跳过
         }
 
-        srcva = va0 + PAGE_SIZE;
+        // 2. 分配一页新的物理内存给子进程
+        char *new_pa = kmem_alloc();
+        if (new_pa == 0) {
+            // (这里应该有一个错误回滚，释放所有已分配的页)
+            return -1; // 内存不足
+        }
+
+        // 3. 复制父进程的物理页内容到子进程的新物理页
+        uint64 src_pa = PTE_TO_PA(*pte);
+        memmove(new_pa, (void*)src_pa, PAGE_SIZE);
+
+        // 4. 将子进程的新物理页映射到 *相同* 的虚拟地址
+        int flags = PTE_FLAGS(*pte); // 获取旧的权限 (R,W,X,U)
+        if (vmem_map_pagetable(dst_pt, va, (uint64)new_pa, flags) != 0) {
+            kmem_free(new_pa);
+            // (错误回滚)
+            return -1;
+        }
     }
-    if(got_null){
-        return 0;
-    } else {
+    return 0; // 成功
+}
+
+// 复制栈，用于fork
+int vmem_stack_copy(pagetable_t src_pt, pagetable_t dst_pt) {
+    // 目前栈只有一页
+    pte_t *pte = vmem_walk_pte(src_pt, USER_STACK_VA, 0);
+
+    if (pte == 0 || (*pte & PTE_V) == 0) {
+        panic("fork: no stack found"); // 或者返回-1
+    }
+
+    char *new_pa = kmem_alloc();
+    if (new_pa == 0) {
         return -1;
     }
+
+    uint64 src_pa = PTE_TO_PA(*pte);
+    memmove(new_pa, (void*)src_pa, PAGE_SIZE);
+
+    int flags = PTE_FLAGS(*pte);
+    if (vmem_map_pagetable(dst_pt, USER_STACK_VA, (uint64)new_pa, flags) != 0) {
+        kmem_free(new_pa);
+        return -1;
+    }
+
+    return 0;
 }
 
-// ====================================================================
-// Fault Handler (异常处理)
-// ====================================================================
-void handle_page_fault(struct trapframe *tf) {
-    uint64 fault_va = r_stval(); // 获取出错地址
+// 安全地从用户空间复制数据到内核空间,
+int vmem_copyin(pagetable_t pagetable, char *dst_kernel, uint64 src_user, uint64 len) {
+    uint64 n, va_start, pa_base;
+    pte_t *pte;
 
-    // --- 1. 新的栈溢出检测逻辑 ---
-    // 遍历所有可能的内核栈，看看 fault_va 是否落在它们的守护页里
-    // 守护页位于：每个 VKSTACK(i) 的下方 (低地址方向)
-    int is_stack_overflow = 0;
-    for(int i = 0; i < NPROC; i++) {
-        uint64 kstack_base = VKSTACK(i);
-        // 守护页范围：[栈底 - PAGE_SIZE, 栈底)
-        if (fault_va >= (kstack_base - PAGE_SIZE) && fault_va < kstack_base) {
-            is_stack_overflow = 1;
-            break;
+    while (len > 0) {
+        // 1. 检查虚拟地址是否在用户空间范围内
+        if (src_user >= MAX_USER_VA) {
+            return -1;
+        }
+        // 2. 找到该虚拟地址所在的页的PTE
+        pte = vmem_walk_pte(pagetable, src_user, 0);
+        // 3. 安全检查
+        //    PTE 必须存在 (pte != 0)
+        //    PTE 必须是有效的 (PTE_V)
+        //    PTE 必须是用户可访问的 (PTE_U)
+        if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0) {
+            return -1; // 非法地址！
+        }
+        // 4. 计算可以从当前这一个物理页复制多少字节
+        va_start = PAGE_DOWN(src_user); // 当前页的起始虚拟地址
+        pa_base = PTE_TO_PA(*pte);      // 当前页的起始物理地址
+
+        n = PAGE_SIZE - (src_user - va_start); // 当前页还剩多少字节
+        if (n > len) {
+            n = len; // 我们只需要 len 这么多
+        }
+
+        // 5. 复制数据
+        //    (pa_base + (src_user - va_start)) 是 src_user 对应的物理地址
+        memmove(dst_kernel, (void *)(pa_base + (src_user - va_start)), n);
+
+        // 6. 更新循环变量
+        len -= n;
+        dst_kernel += n;
+        src_user += n;
+    }
+
+    return 0; // 成功
+}
+
+// 获取虚拟地址对应的物理地址
+uint64 vmem_walk_addr(pagetable_t pagetable, uint64 va)
+{
+    pte_t *pte;
+    uint64 pa;
+
+    if(va >= MAX_VIRTUAL_ADDR)
+        return 0;
+
+    pte = vmem_walk_pte(pagetable, va, 0);
+    if(pte == 0)
+        return 0;
+    if((*pte & PTE_V) == 0)
+        return 0;
+    if((*pte & PTE_U) == 0)
+        return 0;
+    pa = PTE_TO_PA(*pte);
+    return pa;
+}
+
+// 安全地从内核空间复制数据到用户空间
+int vmem_copyout(pagetable_t pagetable, uint64 dst_user, char *src_kernel, uint64 len) {
+    uint64 n, va_start, pa_base;
+    pte_t *pte;
+
+    while (len > 0) {
+        // 1. 检查虚拟地址
+        if (dst_user >= MAX_USER_VA) {
+            return -1;
+        }
+
+        // 2. 找到PTE
+        pte = vmem_walk_pte(pagetable, dst_user, 0);
+
+        // 3. 安全检查
+        //    除了 V 和 U，我们必须检查可写权限 W
+        if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 || (*pte & PTE_W) == 0) {
+            return -1; // 非法地址或不可写！
+        }
+
+        // 4. 计算可以往当前这一个物理页写多少字节
+        va_start = PAGE_DOWN(dst_user);
+        pa_base = PTE_TO_PA(*pte);
+
+        n = PAGE_SIZE - (dst_user - va_start);
+        if (n > len) {
+            n = len;
+        }
+
+        // 5. 复制数据 (方向相反)
+        memmove((void *)(pa_base + (dst_user - va_start)), src_kernel, n);
+
+        // 6. 更新循环变量
+        len -= n;
+        src_kernel += n;
+        dst_user += n;
+    }
+
+    return 0; // 成功
+}
+
+int vmem_user_alloc(pagetable_t pagetable, uint64 old_size, uint64 new_size) {
+    if(new_size < old_size)
+        return 0;
+    uint64 va = PAGE_UP(old_size);
+    // 循环直到覆盖了 new_size
+    for (; va < new_size; va += PAGE_SIZE) {
+        char *pa = kmem_alloc(); // 分配一页物理内存
+        if (pa == 0) {
+            // TODO: 这里应该有一个回滚，释放所有已分配的页
+            return -1; // 内存耗尽
+        }
+        memset(pa, 0, PAGE_SIZE); // 清零
+
+        if (vmem_map_pagetable(pagetable, va, (uint64)pa, PTE_U | PTE_R | PTE_W) != 0) {
+            kmem_free(pa);
+            // 回滚
+            return -1;
         }
     }
+    return 0; // 成功
+}
 
-    if (is_stack_overflow) {
-        printf("\n!!! PANIC: Kernel Stack Overflow !!!\n");
-        printf("Faulting VA: %p (Guard Page Hit)\n", fault_va);
-        panic("Kernel Stack Overflow");
+uint64 vmem_user_dealloc(pagetable_t pagetable, uint64 old_size, uint64 new_size) {
+    if(new_size >= old_size)
+        return old_size;
+    uint64 va = PAGE_UP(new_size);
+    for (;va < old_size; va += PAGE_SIZE) {
+        vmem_unmap_pagetable(pagetable, va, 1);
     }
-
-    // --- 2. 普通缺页处理 ---
-    printf("\n--- Page Fault Occurred! ---\n");
-    printf("Faulting Virtual Address: %p\n", fault_va);
-    printf("Instruction Pointer (epc): %p\n", tf->epc);
-
-    panic("Page Fault");
+    return new_size;
 }
 
-/* 下面均为辅助函数 */
-void dump_walk(pagetable_t pt, int level, uint64 current_va) {
-    if(level < 0) return;
-    for (int i = 0; i < 512; i++) {
-        pte_t pte = pt[i];
-        if (pte & PTE_V) {
-            uint64 child_va = current_va + ((uint64)i << (12 + level * 9));
-            for(int j = 2; j > level; j--) printf("  ");
+// 测试建立映射函数正确性
+void test_vmem_mapping(void) {
+    printf("\n");
+    printf_color("=== Running VM mapping test ===\n", BLUE);
 
-            printf("L%d[%03d]: va=0x%lx -> pa=0x%lx | %c%c%c%c%c\n",
-                   level, i, child_va, PTE2PA(pte),
-                   (pte & PTE_V) ? 'V' : '-', (pte & PTE_R) ? 'R' : '-',
-                   (pte & PTE_W) ? 'W' : '-', (pte & PTE_X) ? 'X' : '-',
-                   (pte & PTE_U) ? 'U' : '-');
-
-            if ((pte & (PTE_R|PTE_W|PTE_X)) == 0) { // 中间PTE
-                dump_walk((pagetable_t)PTE2PA(pte), level - 1, child_va);
-            }
-        }
+    // 1. 创建一个临时的根页表
+    pagetable_t test_pt = vmem_create_pagetable();
+    if (!test_pt) {
+        panic("test_vmem_mapping: failed to create pagetable");
     }
-}
+    printf("Test pagetable created at PA: %p\n", test_pt);
 
-// 释放一个页表以及它所指向的所有子页表
-void free_walk(pagetable_t pt) {
-    for (int i = 0; i < 512; i++) {
-        pte_t pte = pt[i];
-        // 一个指向下一级页表的PTE（中间PTE），它的R/W/X位必须全部为0
-        if ((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0) {
-            uint64 child = PTE2PA(pte);
-            free_walk((pagetable_t)child);
-        }
+    // 2. 准备要映射的地址
+    // 0b010010001,100100001,000000000000, PTE[0] -> PTE[145] -> PTE[289]
+    uint64 va = 0x12321000; // 挑选一个简单的、页对齐的虚拟地址
+    uint64 pa = (uint64) kmem_alloc(); // 动态申请一个物理页
+    if (pa == 0) {
+        panic("test_vmem_mapping: kmem_alloc failed");
     }
-    free_page((void*)pt);
+    printf("Mapping VA %p -> PA %p\n", (void *) va, (void *) pa);
+
+    // 3. 执行映射
+    int result = vmem_map_pagetable(test_pt, va, pa, PTE_R | PTE_W);
+    if (result != 0) {
+        panic("test_vmem_mapping: map failed");
+    }
+    printf("Mapping successful.\n");
+
+    // 4. 验证映射
+    printf("Verifying mapping...\n");
+    pte_t *pte = vmem_walk_pte(test_pt, va, 0); // 使用 alloc=0 来查找
+
+    if (pte == 0) {
+        panic("test_vmem_mapping: walk failed to find PTE");
+    }
+    if ((*pte & PTE_V) == 0) {
+        panic("test_vmem_mapping: PTE not valid");
+    }
+    if (PTE_TO_PA(*pte) != pa) {
+        panic("test_vmem_mapping: PA in PTE is incorrect");
+    }
+    printf("VA %p -> PA %p\n", (void *) va, (void *) PTE_TO_PA(*pte));
+    printf("Verification successful: PTE content is correct.\n");
+
+    vmem_pagetable_dump(test_pt, 2);
+    vmem_pagetable_dump((pagetable_t) 0x0000000087ffd000, 1);
+    vmem_pagetable_dump((pagetable_t) 0x0000000087ffc000, 0);
+
+    // // 这里应该panic，说该物理页没释放
+    // vmem_free_pagetable(test_pt);
+    // kmem_free((void *) pa);
+
+    kmem_free((void *) pa);
+    *pte = 0;
+    vmem_free_pagetable(test_pt);
+    printf("Pagetable free successful\n");
+
+    printf_color("=== VM mapping test PASSED ===\n", GREEN);
 }
 
-// 销毁一个完整的页表
-void destroy_pagetable(pagetable_t pt) {
-    if (pt == NULL) return;
-    free_walk(pt);
+// 测试 vmem_init 创建的内核页表是否正确
+void test_kernel_pagetable(void) {
+    printf_color("=== Running kernel pagetable test ===\n",BLUE);
+
+    pte_t *pte;
+    uint64 pa;
+
+    // 0. 检查内核根页表
+    if (!kernel_root_pagetable) panic("test_kernal_pagetable: kernel root pagetable not valid");
+
+    // 1. 检查 UART 的映射
+    pte = vmem_walk_pte(kernel_root_pagetable, UART, 0);
+    if (pte == 0) panic("test_kernel_pagetable: UART not mapped");
+    if ((*pte & PTE_V) == 0) panic("test_kernel_pagetable: UART PTE not valid");
+    pa = PTE_TO_PA(*pte);
+    if (pa != UART) panic("test_kernel_pagetable: UART wrong PA");
+    if ((*pte & (PTE_R | PTE_W)) != (PTE_R | PTE_W)) panic("test_kernel_pagetable: UART wrong perm");
+    printf("UART mapping OK.\n");
+
+    // 2. 检查内核代码段的第一个页 (KERNEL_BASE)
+    pte = vmem_walk_pte(kernel_root_pagetable, KERNEL_BASE, 0);
+    if (pte == 0) panic("test_kernel_pagetable: KERNEL_BASE not mapped");
+    if ((*pte & PTE_V) == 0) panic("test_kernel_pagetable: KERNEL_BASE PTE not valid");
+    pa = PTE_TO_PA(*pte);
+    if (pa != KERNEL_BASE) panic("test_kernel_pagetable: KERNEL_BASE wrong PA");
+    if ((*pte & (PTE_R | PTE_X)) != (PTE_R | PTE_X)) panic("test_kernel_pagetable: KERNEL_BASE wrong perm");
+    printf("Kernel code mapping OK.\n");
+
+    // 3. 检查内核数据段的第一个页
+    uint64 data_start = PAGE_UP((uint64)etext);
+    pte = vmem_walk_pte(kernel_root_pagetable, data_start, 0);
+    if (pte == 0) panic("test_kernel_pagetable: data section not mapped");
+    if ((*pte & PTE_V) == 0) panic("test_kernel_pagetable: data section PTE not valid");
+    pa = PTE_TO_PA(*pte);
+    if (pa != data_start) panic("test_kernel_pagetable: data section wrong PA");
+    if ((*pte & (PTE_R | PTE_W)) != (PTE_R | PTE_W)) panic("test_kernel_pagetable: data section wrong perm");
+    printf("Kernel data mapping OK.\n");
+
+    // 4. 检查物理内存顶部的映射
+    pte = vmem_walk_pte(kernel_root_pagetable, PHYS_TOP - PAGE_SIZE, 0);
+    if (pte == 0) panic("test_kernel_pagetable: PHYS_TOP not mapped");
+    if ((*pte & PTE_V) == 0) panic("test_kernel_pagetable: PHYS_TOP PTE not valid");
+    pa = PTE_TO_PA(*pte);
+    if (pa != PHYS_TOP - PAGE_SIZE) panic("test_kernel_pagetable: PHYS_TOP wrong PA");
+    if ((*pte & (PTE_R | PTE_W)) != (PTE_R | PTE_W)) panic("test_kernel_pagetable: PHYS_TOP wrong perm");
+    printf("Physical RAM top mapping OK.\n");
+
+    printf_color("=== Kernel pagetable test PASSED ===\n",GREEN);
 }
 
+// 启用分页
+void vmem_enable_paging(void) {
+    sfence_vma();
+    w_satp(MAKE_SATP((uint64)kernel_root_pagetable));
+    sfence_vma();
+    printf_color("vmem_enable_paging: paging enabled.\n",BLACK);
+}
 
-//
-// // 页表管理工具
-// // 分配一个物理页作为根页表
-// pagetable_t create_pagetable(void) {
-//     return (pagetable_t)alloc_page();
-// }
-//
-// // 将一个虚拟页映射到一个物理页
-// int map_page(pagetable_t pt, uint64 va, uint64 pa, int perm) {
-//     if (va % PAGE_SIZE != 0 || pa % PAGE_SIZE != 0) {
-//         panic("map_page: unaligned addresses");
-//     }
-//
-//     pte_t *pte = walk_create(pt, va);
-//     if (pte == 0) return -1;
-//
-//     if (*pte & PTE_V) {
-//         panic("map_page: remap");
-//     }
-//
-//     *pte = PA2PTE(pa) | perm | PTE_V;
-//     return 0;
-// }
-//
-//
-//
-// // 查找现有映射，如果有效就返回地址，无效就返回0
-// pte_t* walk_lookup(pagetable_t pt, uint64 va) {
-//     if(va >= (1L << 39)) {
-//         return 0;
-//     }
-//
-//     for (int level = 2; level > 0; level--) {
-//         pte_t *pte = &pt[PX(level, va)];
-//         if (*pte & PTE_V) {
-//             // PTE有效，获取下一级页表的物理地址
-//             pt = (pagetable_t)PTE2PA(*pte);
-//         } else {
-//             // PTE无效，意味着映射不存在，查找失败
-//             return 0;
-//         }
-//     }
-//     // 返回最末级（L0）PTE的地址
-//     return &pt[PX(0, va)];
-// }
-//
-// // 查找现有映射，如果有效就返回地址，无效就创建一个新的页进行映射
-// pte_t* walk_create(pagetable_t pt, uint64 va) {
-//     if(va >= (1L << 39)) panic("walk_create: va too large");
-//
-//     for (int level = 2; level > 0; level--) {
-//         pte_t *pte = &pt[PX(level, va)];
-//         if (*pte & PTE_V) {
-//             pt = (pagetable_t)PTE2PA(*pte);
-//         } else {
-//             pt = (pagetable_t)alloc_page();
-//             if (pt == 0) return 0;
-//             memset(pt, 0, PAGE_SIZE);
-//             *pte = PA2PTE(pt) | PTE_V;
-//         }
-//     }
-//     return &pt[PX(0, va)];
-// }
-//
+// 测试启用分页后，物理内存（高位）能否正常分配，写入，读取，释放
+void test_post_paging(void) {
+    printf_color("=== Running post-paging test ===\n", BLUE);
 
-//
-//
-//
-// void dump_pagetable(pagetable_t pt) {
-//     printf("--- Pagetable Dump (Root at PA: 0x%lx) ---\n", (uint64)pt);
-//     dump_walk(pt, 2, 0);
-//     printf("--- End of Dump ---\n");
-// }
-//
-//
-// // ==========================================================
-// // == 用于响应 sysproc.c 的链接器错误
-// // ==========================================================
-//
-// // 验证一个用户虚拟地址的有效性，并返回其物理地址
-// // 检查: 1. PTE_V (有效) 2. PTE_U (用户可访问)
-// // 成功返回物理地址，失败返回 0
-// static uint64
-// walk_user_addr(pagetable_t pt, uint64 va)
-// {
-//     // (你的 walk_lookup 已经检查了 va 上限)
-//     pte_t *pte = walk_lookup(pt, va);
-//     if(pte == 0)
-//         return 0;
-//
-//     // 关键安全检查：
-//     if(((*pte & PTE_V) == 0) || ((*pte & PTE_U) == 0))
-//         return 0;
-//
-//     return PTE2PA(*pte);
-// }
-//
-// // (响应 'copy_from_user')
-// // 从用户空间安全地拷贝数据到内核空间
-// int
-// copy_from_user(void *kernel_dst, uint64 user_src, uint64 len)
-// {
-//     char *k_dst = (char*)kernel_dst;
-//     uint64 va = PGROUNDDOWN(user_src);
-//     uint64 offset = user_src - va;
-//
-//     // (你的 proc.h 已被包含，myproc() 可用)
-//     pagetable_t pt = myproc()->pagetable;
-//
-//     while(len > 0) {
-//         uint64 pa = walk_user_addr(pt, va);
-//         if(pa == 0) {
-//             return -1; // 无效地址或非用户地址
-//         }
-//
-//         uint64 bytes_to_copy = PAGE_SIZE - offset;
-//         if(bytes_to_copy > len) {
-//             bytes_to_copy = len;
-//         }
-//
-//         // 内核可以直接访问所有物理地址
-//         memcpy(k_dst, (void*)(pa + offset), bytes_to_copy);
-//
-//         len -= bytes_to_copy;
-//         k_dst += bytes_to_copy;
-//         va += PAGE_SIZE;
-//         offset = 0; // 只有第一页有 offset
-//     }
-//     return 0;
-// }
-//
-// // (响应 'copy_to_user')
-// // 从内核空间安全地拷贝数据到用户空间
-// int
-// copy_to_user(uint64 user_dst, void *kernel_src, uint64 len)
-// {
-//     char *k_src = (char*)kernel_src;
-//     uint64 va = PGROUNDDOWN(user_dst);
-//     uint64 offset = user_dst - va;
-//
-//     pagetable_t pt = myproc()->pagetable;
-//
-//     while(len > 0) {
-//         uint64 pa = walk_user_addr(pt, va);
-//         if(pa == 0) {
-//             return -1;
-//         }
-//
-//         // 额外检查: 目标地址必须是可写的 (PTE_W)
-//         pte_t *pte = walk_lookup(pt, va); // 我们知道这会成功
-//         if((*pte & PTE_W) == 0) {
-//             return -1; // 目标不可写
-//         }
-//
-//         uint64 bytes_to_copy = PAGE_SIZE - offset;
-//         if(bytes_to_copy > len) {
-//             bytes_to_copy = len;
-//         }
-//
-//         memcpy((void*)(pa + offset), k_src, bytes_to_copy);
-//
-//         len -= bytes_to_copy;
-//         k_src += bytes_to_copy;
-//         va += PAGE_SIZE;
-//         offset = 0;
-//     }
-//     return 0;
-// }
-//
-//
-// // (响应 'uvm_copy')
-// // 为 fork() 复制用户内存
-// int
-// uvm_copy(pagetable_t old_pt, pagetable_t new_pt, uint64 sz)
-// {
-//     pte_t *pte;
-//     uint64 pa, i;
-//     int perm;
-//     void *new_page_pa;
-//
-//     // 遍历父进程的整个用户空间
-//     for(i = 0; i < sz; i += PAGE_SIZE) {
-//         pte = walk_lookup(old_pt, i);
-//
-//         // 如果父进程没有映射，或者不是一个有效的用户页，就跳过
-//         if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0) {
-//             continue;
-//         }
-//
-//         pa = PTE2PA(*pte);
-//         perm = (*pte) & 0x3FF; // 复制所有权限位 (V,R,W,X,U,...)
-//
-//         // 1. 分配一页新的物理内存 (来自 pmm.h)
-//         new_page_pa = alloc_page();
-//         if(new_page_pa == 0) {
-//             goto err; // 内存不足
-//         }
-//
-//         // 2. 将父进程的物理页内容复制到新页
-//         memcpy(new_page_pa, (void*)pa, PAGE_SIZE);
-//
-//         // 3. 将新页映射到子进程的页表中
-//         if(map_page(new_pt, i, (uint64)new_page_pa, perm) != 0) {
-//             free_page(new_page_pa); // (来自 pmm.h)
-//             goto err;
-//         }
-//     }
-//     return 0;
-//
-// err:
-//     // 错误处理：如果中途失败，需要取消映射并释放所有已分配的页
-//     // (这是一个简化的错误处理，更健壮的实现会调用 free_walk)
-//     destroy_pagetable(new_pt); // 销毁不完整的子页表
-//     printf("uvm_copy: failed\n");
-//     return -1;
-// }
+    // 1. 尝试分配一页内存
+    void *p = kmem_alloc();
+    if (p == 0) {
+        panic("kmem_alloc failed after paging");
+    }
+    printf("Post-paging kmem_alloc OK, allocated at PA: %p\n", p);
+
+    // 2. 尝试向这页内存写入数据
+    strcpy(p, "Hello Paging World!");
+    printf("Post-paging memory write OK.\n");
+
+    // 3. 尝试从这页内存读回数据并验证
+    if (strcmp(p, "Hello Paging World!") != 0) {
+        panic("Post-paging memory read verification failed");
+    }
+    printf("Post-paging memory read OK.\n");
+
+    // 4. 尝试释放这页内存
+    kmem_free(p);
+    printf("Post-paging kmem_free OK.\n");
+
+    printf_color("=== Post-paging test PASSED! ===\n", GREEN);
+}
+
+// 尝试向Readonly的代码段进行写入
+void test_write_to_readonly(void) {
+    printf_color("\n=== Running test: Write to Read-Only Memory ===\n", YELLOW);
+    // KERNEL_BASE 是我们内核代码的起始地址，它被映射为只读+可执行。
+    char *kernel_code_ptr = (char *) KERNEL_BASE + 20;
+    // 1. 首先，尝试读取。这应该是成功的。
+    printf("Reading from kernel code @ %p... ", kernel_code_ptr);
+    char original_byte = *kernel_code_ptr;
+    printf("Value is 0x%x. Read OK.\n", original_byte);
+    // 2. 接下来，尝试写入。CPU会顿住，并触发一个异常，不过目前没写异常处理
+    printf("Attempting to write 'X' to read-only kernel code @ %p...\n", kernel_code_ptr);
+    // CPU 硬件会在这里检测到权限冲突 (W=0)，并触发一个 Store Page Fault！
+    *kernel_code_ptr = 'X';
+    // 如果代码能执行到这里，说明内存保护没有生效，是一个严重的 Bug！
+    printf_color("!!! TEST FAILED: Write to read-only memory did NOT cause a fault! !!!\n", RED);
+    // 恢复原来的值 (虽然理论上走不到这里)
+    *kernel_code_ptr = original_byte;
+}

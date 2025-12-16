@@ -8,8 +8,8 @@
 #define LEAF_PTES (PAGE_SIZE >> 3) // 一个页表包含512个PTE
 #define PAGE_SHIFT 12  // 页内偏移（12位）
 
-#define PGROUNDUP(sz)  (((sz)+PAGE_SIZE-1) & ~(PAGE_SIZE-1))
-#define PGROUNDDOWN(a) (((a)) & ~(PAGE_SIZE-1))
+#define PAGE_UP(sz)  (((sz)+PAGE_SIZE-1) & ~(PAGE_SIZE-1)) // 向上对齐
+#define PAGE_DOWN(a) (((a)) & ~(PAGE_SIZE-1)) // 向下对齐
 
 #define PTE_V (1L << 0) // 有效位
 #define PTE_R (1L << 1) // 可读
@@ -17,10 +17,11 @@
 #define PTE_X (1L << 3) // 可运行
 #define PTE_U (1L << 4) // 用户态能否使用
 
-#define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
-
-#define PTE2PA(pte) (((pte) >> 10) << 12)
-
+// 把物理地址转换为页表项中的物理地址
+#define PA_TO_PTE(pa) ((((uint64)pa) >> 12) << 10)
+// 把页表项中的物理地址转换为物理地址
+#define PTE_TO_PA(pte) (((pte) >> 10) << 12)
+// 获取PTE标志位
 #define PTE_FLAGS(pte) ((pte) & 0x3FF)
 
 // 最大的地址，为了避免符号问题，最高位不使用

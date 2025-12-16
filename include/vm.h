@@ -1,42 +1,44 @@
-#ifndef __VM_H__
-#define __VM_H__
+#ifndef VM_H
+#define VM_H
 
 #include "types.h"
+#include "riscv.h"
 
-struct trapframe;
+// vm.c
+pagetable_t vmem_create_pagetable(void);
 
-// 页表类型定义
-typedef uint64* pagetable_t;
-typedef uint64 pte_t;
-extern pagetable_t kernel_pagetable;
+pte_t *vmem_walk_pte(pagetable_t pagetable, uint64 virtual_addr, int alloc);
 
-// --- 核心映射函数 ---
+int vmem_map_pagetable(pagetable_t pagetable, uint64 virtual_addr, uint64 physical_addr, int permission);
 
-pagetable_t kvmmake(void); // 创建内核页表
-void kvminit(void);
-void kvminithart(void);
-int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm);
-pte_t* walk(pagetable_t pagetable, uint64 va, int alloc);
+int vmem_unmap_pagetable(pagetable_t pagetable, uint64 virtual_addr, int do_free);
 
-// --- 用户虚拟内存管理 (UVM) ---
-pagetable_t uvmcreate(void);
-void uvminit(pagetable_t pagetable, uchar *src, uint sz);
-uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm);
-uint64 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz);
-int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz);
-void uvmfree(pagetable_t pagetable, uint64 sz);
-void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free);
+void vmem_free_pagetable(pagetable_t pagetable);
 
-// --- 内核/用户数据拷贝 ---
-int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len);
-int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len);
-int copy_from_user(void *kernel_dst, uint64 user_src, uint64 len);
-int copy_to_user(uint64 user_dst, void *kernel_src, uint64 len);
-int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max);
+void vmem_init(void);
 
-// --- 调试与异常处理 ---
-void dump_pagetable(pagetable_t pt);
-void handle_page_fault(struct trapframe *tf);
-void destroy_pagetable(pagetable_t pt);
+void vmem_enable_paging(void);
 
-#endif
+int vmem_user_copy(pagetable_t src_pt, pagetable_t dst_pt, uint64 size);
+
+int vmem_stack_copy(pagetable_t src_pt, pagetable_t dst_pt);
+
+int vmem_copyin(pagetable_t pagetable, char *dst_kernel, uint64 src_user, uint64 len);
+
+int vmem_copyout(pagetable_t pagetable, uint64 dst_user, char *src_kernel, uint64 len);
+
+int vmem_user_alloc(pagetable_t pagetable, uint64 old_size, uint64 new_size);
+
+uint64 vmem_user_dealloc(pagetable_t pagetable, uint64 old_size, uint64 new_size);
+
+uint64 vmem_walk_addr(pagetable_t pagetable, uint64 va);
+
+void test_vmem_mapping(void);
+
+void test_kernel_pagetable(void);
+
+void test_post_paging(void);
+
+void test_write_to_readonly(void);
+
+#endif //VM_H

@@ -1,7 +1,6 @@
 #include "../include/printf.h"
 #include "../include/console.h"
 #include "../include/test.h"
-#include "../include/pmm.h"
 #include "../include/vm.h"
 #include "../include/riscv.h"
 #include "../include/memlayout.h"
@@ -17,143 +16,143 @@ extern char etext[]; // 内核代码段结束地址
 // 定义一个简单的assert宏，用于内核调试
 // 如果断言失败，系统将panic
 
-static void simple_delay(long count) {
-    for (volatile long i = 0; i < count; i++);
-}
-
-static unsigned long long get_time() {
-    unsigned long long cycles;
-    // "rdtime %0" 是汇编指令，把 time 寄存器的值读到 %0 (第一个操作数)
-    // "=r" (cycles) 是约束，告诉编译器把结果存入 C 变量 cycles
-    asm volatile("rdtime %0" : "=r" (cycles));
-    return cycles;
-}
-
-void test_printf_basic() {
-    printf("=== printf测试 ===\n");
-    printf("Testing integer: %d\n", 42);
-    printf("Testing negative: %d\n", -123);
-    printf("Testing zero: %d\n", 0);
-    printf("Testing hex: 0x%x\n", 0xABC);
-    printf("Testing string: %s\n", "Hello RISC-V");
-    printf("Testing char: %c\n", 'X');
-    printf("Testing percent: 100%%\n");
-}
-
-void test_printf_edge_cases() {
-    printf("INT_MAX: %d\n", 2147483647);
-    printf("INT_MIN: %d\n", -2147483648);
-    printf("NULL string: %s\n", (char*)0);
-    printf("Empty string: %s\n", "");
-}
-
-void test_console_features(void) {
-    console_clear();
-    printf("--- 控制台功能测试程序 ---\n");
-    printf("现在开始展示 console 模块的各项功能。\n\n");
-    simple_delay(50000000);
-
-    printf("--- 1. 测试所有前景色 ---\n");
-    const char* color_names[] = {"黑色", "红色", "绿色", "黄色", "蓝色", "品红", "青色", "白色"};
-    const uint8_t fg_colors[] = {FG_BLACK, FG_RED, FG_GREEN, FG_YELLOW, FG_BLUE, FG_MAGENTA, FG_CYAN, FG_WHITE};
-
-    for (int i = 0; i < 8; i++) {
-        console_set_color(fg_colors[i], BG_BLACK); // 以黑色为背景进行测试
-        printf("这是 [%s] 的文字。\n", color_names[i]);
-    }
-    console_puts(ANSI_COLOR_RESET); // 恢复默认颜色
-    printf("\n");
-    simple_delay(100000000);
-
-    printf("--- 2. 测试所有背景色 ---\n");
-    const uint8_t bg_colors[] = {BG_BLACK, BG_RED, BG_GREEN, BG_YELLOW, BG_BLUE, BG_MAGENTA, BG_CYAN, BG_WHITE};
-
-    for (int i = 0; i < 8; i++) {
-        console_set_color(FG_WHITE, bg_colors[i]); // 以白色为前景进行测试
-        // 打印一些空格以突显背景色
-        printf("  背景色为 [%s]  \n", color_names[i]);
-    }
-    console_puts(ANSI_COLOR_RESET); // 恢复默认颜色
-    printf("\n");
-    simple_delay(100000000);
-
-    printf("将在3秒后清空屏幕...\n");
-    simple_delay(150000000);
-    console_clear();
-    printf("屏幕已清空！\n\n");
-    simple_delay(50000000);
-    printf("--- 控制台功能测试结束 ---\n");
-}
-
-void test_clear(void) {
-    printf("3秒后清屏...\n");
-    // 简单延时
-    simple_delay(150000000);
-    console_clear();
-    printf("屏幕已清空！\n");
-}
-
-
-void test_printf_timer() {
-    unsigned long long start, end, min_diff = 0xFFFFFFFFFFFFFFFF; // 设为最大值
-    int i;
-
-    // --- 预热阶段 ---
-    for (i = 0; i < 10; i++) {
-        test_printf_basic();
-    }
-
-    // --- 正式测试 ---
-    for (i = 0; i < 100; i++) {
-        start = get_time();
-        test_printf_basic();
-        end = get_time();
-
-        if ((end - start) < min_diff) {
-            min_diff = end - start; // 只保留最小的耗时
-        }
-    }
-
-    printf("\n--- 最好性能测试结果 ---\n");
-    printf("最小占用周期: %d\n", (int)min_diff);
-}
-
-/**
- * @brief 1. 测试物理内存分配器 (PMM)
- * - 验证基本分配、释放、页对齐和数据读写。
- */
-void test_physical_memory(void) {
-    printf("\n--- 1. Testing Physical Memory Allocator (PMM) ---\n");
-
-    // 测试基本分配和释放
-    void *page1 = alloc_page();
-    printf("Allocated page1 at PA: %p\n", (uint64)page1);
-    assert(page1 != 0);
-
-    void *page2 = alloc_page();
-    printf("Allocated page2 at PA: %p\n", (uint64)page2);
-    assert(page2 != 0);
-    assert(page1 != page2);
-
-    // 页对齐检查
-    assert(((uint64)page1 & (PAGE_SIZE - 1)) == 0);
-    assert(((uint64)page2 & (PAGE_SIZE - 1)) == 0);
-
-    // 测试数据写入和读取
-    *(uint64*)page1 = 0xDEADBEEF;
-    assert(*(uint64*)page1 == 0xDEADBEEF);
-
-    // 测试释放和重新分配
-    free_page(page1);
-    free_page(page2);
-
-    void *page3 = alloc_page();
-    printf("Freed page1 & page2, then re-allocated page3 at PA: %p\n", (uint64)page3);
-    assert(page3 != 0);
-    free_page(page3);
-
-    printf("PMM test PASSED.\n");
-}
+// static void simple_delay(long count) {
+//     for (volatile long i = 0; i < count; i++);
+// }
+//
+// static unsigned long long get_time() {
+//     unsigned long long cycles;
+//     // "rdtime %0" 是汇编指令，把 time 寄存器的值读到 %0 (第一个操作数)
+//     // "=r" (cycles) 是约束，告诉编译器把结果存入 C 变量 cycles
+//     asm volatile("rdtime %0" : "=r" (cycles));
+//     return cycles;
+// }
+//
+// void test_printf_basic() {
+//     printf("=== printf测试 ===\n");
+//     printf("Testing integer: %d\n", 42);
+//     printf("Testing negative: %d\n", -123);
+//     printf("Testing zero: %d\n", 0);
+//     printf("Testing hex: 0x%x\n", 0xABC);
+//     printf("Testing string: %s\n", "Hello RISC-V");
+//     printf("Testing char: %c\n", 'X');
+//     printf("Testing percent: 100%%\n");
+// }
+//
+// void test_printf_edge_cases() {
+//     printf("INT_MAX: %d\n", 2147483647);
+//     printf("INT_MIN: %d\n", -2147483648);
+//     printf("NULL string: %s\n", (char*)0);
+//     printf("Empty string: %s\n", "");
+// }
+//
+// void test_console_features(void) {
+//     console_clear();
+//     printf("--- 控制台功能测试程序 ---\n");
+//     printf("现在开始展示 console 模块的各项功能。\n\n");
+//     simple_delay(50000000);
+//
+//     printf("--- 1. 测试所有前景色 ---\n");
+//     const char* color_names[] = {"黑色", "红色", "绿色", "黄色", "蓝色", "品红", "青色", "白色"};
+//     const uint8_t fg_colors[] = {FG_BLACK, FG_RED, FG_GREEN, FG_YELLOW, FG_BLUE, FG_MAGENTA, FG_CYAN, FG_WHITE};
+//
+//     for (int i = 0; i < 8; i++) {
+//         console_set_color(fg_colors[i], BG_BLACK); // 以黑色为背景进行测试
+//         printf("这是 [%s] 的文字。\n", color_names[i]);
+//     }
+//     console_puts(ANSI_COLOR_RESET); // 恢复默认颜色
+//     printf("\n");
+//     simple_delay(100000000);
+//
+//     printf("--- 2. 测试所有背景色 ---\n");
+//     const uint8_t bg_colors[] = {BG_BLACK, BG_RED, BG_GREEN, BG_YELLOW, BG_BLUE, BG_MAGENTA, BG_CYAN, BG_WHITE};
+//
+//     for (int i = 0; i < 8; i++) {
+//         console_set_color(FG_WHITE, bg_colors[i]); // 以白色为前景进行测试
+//         // 打印一些空格以突显背景色
+//         printf("  背景色为 [%s]  \n", color_names[i]);
+//     }
+//     console_puts(ANSI_COLOR_RESET); // 恢复默认颜色
+//     printf("\n");
+//     simple_delay(100000000);
+//
+//     printf("将在3秒后清空屏幕...\n");
+//     simple_delay(150000000);
+//     console_clear();
+//     printf("屏幕已清空！\n\n");
+//     simple_delay(50000000);
+//     printf("--- 控制台功能测试结束 ---\n");
+// }
+//
+// void test_clear(void) {
+//     printf("3秒后清屏...\n");
+//     // 简单延时
+//     simple_delay(150000000);
+//     console_clear();
+//     printf("屏幕已清空！\n");
+// }
+//
+//
+// void test_printf_timer() {
+//     unsigned long long start, end, min_diff = 0xFFFFFFFFFFFFFFFF; // 设为最大值
+//     int i;
+//
+//     // --- 预热阶段 ---
+//     for (i = 0; i < 10; i++) {
+//         test_printf_basic();
+//     }
+//
+//     // --- 正式测试 ---
+//     for (i = 0; i < 100; i++) {
+//         start = get_time();
+//         test_printf_basic();
+//         end = get_time();
+//
+//         if ((end - start) < min_diff) {
+//             min_diff = end - start; // 只保留最小的耗时
+//         }
+//     }
+//
+//     printf("\n--- 最好性能测试结果 ---\n");
+//     printf("最小占用周期: %d\n", (int)min_diff);
+// }
+//
+// /**
+//  * @brief 1. 测试物理内存分配器 (PMM)
+//  * - 验证基本分配、释放、页对齐和数据读写。
+//  */
+// void test_physical_memory(void) {
+//     printf("\n--- 1. Testing Physical Memory Allocator (PMM) ---\n");
+//
+//     // 测试基本分配和释放
+//     void *page1 = alloc_page();
+//     printf("Allocated page1 at PA: %p\n", (uint64)page1);
+//     assert(page1 != 0);
+//
+//     void *page2 = alloc_page();
+//     printf("Allocated page2 at PA: %p\n", (uint64)page2);
+//     assert(page2 != 0);
+//     assert(page1 != page2);
+//
+//     // 页对齐检查
+//     assert(((uint64)page1 & (PAGE_SIZE - 1)) == 0);
+//     assert(((uint64)page2 & (PAGE_SIZE - 1)) == 0);
+//
+//     // 测试数据写入和读取
+//     *(uint64*)page1 = 0xDEADBEEF;
+//     assert(*(uint64*)page1 == 0xDEADBEEF);
+//
+//     // 测试释放和重新分配
+//     free_page(page1);
+//     free_page(page2);
+//
+//     void *page3 = alloc_page();
+//     printf("Freed page1 & page2, then re-allocated page3 at PA: %p\n", (uint64)page3);
+//     assert(page3 != 0);
+//     free_page(page3);
+//
+//     printf("PMM test PASSED.\n");
+// }
 
 
 /**
@@ -267,7 +266,7 @@ void test_timer_interrupt(void) {
 void test_store_page_fault(void) {
     printf("\n=== Running test: Write to Read-Only Memory(store page fault) ===\n");
     // KERNEL_BASE 是我们内核代码的起始地址，它被映射为只读+可执行。
-    char *kernel_code_ptr = (char *) KERNBASE + 20;
+    char *kernel_code_ptr = (char *) KERNEL_BASE + 20;
     // 2. 接下来，尝试写入。CPU会顿住，并触发一个异常，不过目前没写异常处理
     printf("Attempting to write 'X' to read-only kernel code @ %p...\n", kernel_code_ptr);
     // CPU 硬件会在这里检测到权限冲突 (W=0)，并触发一个 Store Page Fault！
@@ -375,19 +374,19 @@ static void simple_task(void) {
 // ---------------------------------
 
 // 计算密集型任务
-static void cpu_intensive_task(void) {
-    int pid = myproc()->pid;
-    printf("  [PID %d] CPU intensive task started.\n", pid);
-
-    // 运行一段时间
-    uint64 start = get_time();
-    while(get_time() < start + 50000000) { // 大约 0.5 秒
-        // 忙等待
-    }
-
-    printf("  [PID %d] CPU intensive task finished.\n", pid);
-    kexit(0);
-}
+// static void cpu_intensive_task(void) {
+//     int pid = myproc()->pid;
+//     printf("  [PID %d] CPU intensive task started.\n", pid);
+//
+//     // 运行一段时间
+//     uint64 start = get_time();
+//     while(get_time() < start + 50000000) { // 大约 0.5 秒
+//         // 忙等待
+//     }
+//
+//     printf("  [PID %d] CPU intensive task finished.\n", pid);
+//     kexit(0);
+// }
 
 // void test_scheduler(void) {
 //     printf("\n--- 7. Testing Scheduler (Round-Robin) ---\n");

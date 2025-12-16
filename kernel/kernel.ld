@@ -11,6 +11,7 @@ SECTIONS
         /* 把所有输入文件的代码部分都放在这里 */
         *(.text .text.*)
         . = ALIGN(0x1000);
+/*        ptrampoline = .;*/
         PROVIDE(ptrampoline = .);
         *(.trampsec)
         . = ALIGN(0x1000);

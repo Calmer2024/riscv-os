@@ -1,19 +1,14 @@
-#ifndef __PROC_H__
-#define __PROC_H__
-
+#ifndef PROC_H
+#define PROC_H
+#include "file.h"
+#include "riscv.h"
 #include "types.h"
-#include "spinlock.h"
-#include "vm.h"
 
-#define NPROC 64 // 最大进程数
-
-// 上下文结构体
-// 用于 swtch
-// 仅保存被调用者寄存器（Callee-saved）
+// 进程陷入内核态进行调度切换时保存上下文
 struct context {
     uint64 ra;
     uint64 sp;
-    // Callee-saved
+    // 保存调用者保存寄存器，被调用者保存寄存器由调用switch函数的地方进行保存与恢复
     uint64 s0;
     uint64 s1;
     uint64 s2;
@@ -28,112 +23,135 @@ struct context {
     uint64 s11;
 };
 
-// CPU核心状态
-struct cpu {
-    struct proc *proc; // 当前运行的进程
-    struct context context; // 调度器上下文（用于swtch）
-    int noff;            // 关中断嵌套层数
-    int intena;          // 在关中断前，中断是否开启
-    uint64 trapstack;
-};
-
-// 进程状态
-enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
-
-// 进程结构体
-struct proc {
-    struct spinlock lock;     // 保护进程数据的自旋锁
-    enum procstate state;     // 进程状态
-    int pid;                  // 进程ID
-    struct proc *parent;      // 父进程
-
-    uint64 kstack;            // 此进程的内核栈 (虚拟地址)
-    pagetable_t pagetable;    // [NEW] 进程的用户页表
-
-    struct trapframe *trapframe; // [MODIFIED] 用户陷阱帧
-    // 注意：trapframe 现在指向一个独立的物理页，
-    // 在用户空间，它被映射到固定虚拟地址 TRAPFRAME
-
-    struct context context;   // 内核上下文 (用于 swtch 切换)
-
-    uint64 sz;                // 进程内存大小 (用户堆大小)
-    int exit_status;          // 退出状态码 (供 wait() 读取)
-
-    int killed;
-
-    void *chan;               // 如果在 SLEEPING，休眠在哪个通道上
-    char name[16];            // 进程名 (调试)
-};
-
-extern struct cpu cpus[1]; // 只有一个核心
-extern struct proc proc[NPROC];
-
-// 陷阱帧：由 uservec.S (trampoline) 保存
-// 严格对应 struct trapframe 的内存布局
+// 保存用户态的完整现场，用于特权级切换
 struct trapframe {
-    uint64 kernel_satp;   // 内核页表
-    uint64 kernel_sp;     // 内核栈顶
-    uint64 kernel_trap;   // usertrap()函数的地址
-    uint64 epc;           // sepc寄存器 (用户PC)
-    uint64 kernel_hartid; // cpuid
+    /*   0 */
+    uint64 kernel_pagetable; // 内核根页表
+    /*   8 */
+    uint64 kernel_sp; // 内核栈
+    /*  16 */
+    uint64 kernel_trap; // usertrap()函数入口
+    /*  24 */
+    uint64 epc; // 陷入trap时候的pc值
+    /*  32 */
+    uint64 kernel_hartid; // saved kernel tp
+    /*  40 */
     uint64 ra;
+    /*  48 */
     uint64 sp;
+    /*  56 */
     uint64 gp;
+    /*  64 */
     uint64 tp;
+    /*  72 */
     uint64 t0;
+    /*  80 */
     uint64 t1;
+    /*  88 */
     uint64 t2;
+    /*  96 */
     uint64 s0;
+    /* 104 */
     uint64 s1;
+    /* 112 */
     uint64 a0;
+    /* 120 */
     uint64 a1;
+    /* 128 */
     uint64 a2;
+    /* 136 */
     uint64 a3;
+    /* 144 */
     uint64 a4;
+    /* 152 */
     uint64 a5;
+    /* 160 */
     uint64 a6;
+    /* 168 */
     uint64 a7;
+    /* 176 */
     uint64 s2;
+    /* 184 */
     uint64 s3;
+    /* 192 */
     uint64 s4;
+    /* 200 */
     uint64 s5;
+    /* 208 */
     uint64 s6;
+    /* 216 */
     uint64 s7;
+    /* 224 */
     uint64 s8;
+    /* 232 */
     uint64 s9;
+    /* 240 */
     uint64 s10;
+    /* 248 */
     uint64 s11;
+    /* 256 */
     uint64 t3;
+    /* 264 */
     uint64 t4;
+    /* 272 */
     uint64 t5;
+    /* 280 */
     uint64 t6;
 };
 
-// 进程管理函数原型
-void proc_init(void);
-struct proc* alloc_process(void);
-void free_process(struct proc *p);
-int kwait(uint64 addr);
-void kexit(int status);
+enum procstate {
+    UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE
+};
 
-// 用户进程支持函数
-pagetable_t proc_pagetable(struct proc *p);
-void proc_freepagetable(pagetable_t pagetable, uint64 sz);
-void userinit(void);
-int fork(void);
-// ------------------------------
+struct proc {
+    enum procstate state;
+    int pid;
+    struct proc *parent;
+    uint64 kstack; // 内核栈栈顶虚拟地址
+    pagetable_t pagetable; // 进程页表
+    struct trapframe *trapframe; // 陷阱帧的指针
+    struct context context; // 内核线程上下文
+    uint64 size; // 进程占用的内存大小。假设进程的虚拟地址空间是从0开始一直到sz
+    void *sleep_channel; // 进程等待的频道
+    int exit_status; // 退出的状态码
 
-void scheduler(void) __attribute__((noreturn));
-void swtch(struct context *old, struct context *new);
+    struct file *open_file[NOFILE];  // NOFILE 通常定义为 16
+    struct inode *cwd; // 当前工作目录
+};
+
+struct cpu {
+    struct proc *proc; // 正在运行的进程
+    struct context context; // cpu自己的上下文
+};
+
+extern struct cpu cpu;
+
+void swtch(struct context *, struct context *);
+
+struct proc *proc_running();
+
+void scheduler(void);
+
+struct proc *kproc_create(void (*proc_func)());
+
+void proc_free_pagetable(pagetable_t pagetable, uint64 size);
+
+void kproc_test(void);
+
 void yield(void);
-void sleep(void *chan, struct spinlock *lk);
-void wakeup(void *chan);
 
-// CPU相关
-struct cpu* mycpu(void);
-struct proc* myproc(void);
+struct proc *proc_alloc(void);
 
-// 陷阱返回
-void usertrapret(void);
+void proc_userinit();
 
-#endif
+void exit(int status);
+
+void sleep(void *channel);
+
+void wakeup(void *channel);
+
+int wait(uint64 status_va);
+
+int proc_grow(int size);
+
+#endif //PROC_H
