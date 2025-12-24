@@ -26,62 +26,13 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="571d505b-b75e-46af-be1e-e686c9aeb0b5" name="更改" comment="&lt;fix&gt;:解决git冲突">
-      <change afterPath="$PROJECT_DIR$/.idea/deployment.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/editor.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/other.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/console.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/defs.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/elf.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/file.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/kalloc.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/pipe.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/printf.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/riscv.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/stdarg.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/stddef.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/string.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/syscall.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/sysinfo.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/test.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/timer.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/trap.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/uart.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/virtio.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/include/vm.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/console.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/console.o" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/entry.d" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/exec.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/file.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/kalloc.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/kernelvec.S" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/main.d" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/pipe.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/printf.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/printf.o" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/sleeplock.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/start.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/string.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/swtch.S" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/sysfile.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/test.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/timer.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/uart.d" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/virtio_disk.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kernel/vm.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mkfs.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/从零构建操作系统-学生指导手册.pdf" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/操作系统实践.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/types.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/kernel.ld" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/kernel.ld" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/main.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/uart.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/uart.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/uart.h" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test.c" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test.o" beforeDir="false" />
+    <list default="true" id="571d505b-b75e-46af-be1e-e686c9aeb0b5" name="更改" comment="Merge branch 'temp-fix'&#10;&#10;# Conflicts:&#10;#&#9;.idea/deployment.xml&#10;#&#9;include/console.h&#10;#&#9;include/printf.h&#10;#&#9;include/riscv.h&#10;#&#9;include/stdarg.h&#10;#&#9;include/stddef.h&#10;#&#9;include/string.h&#10;#&#9;include/syscall.h&#10;#&#9;include/test.h&#10;#&#9;include/timer.h&#10;#&#9;include/trap.h&#10;#&#9;include/vm.h&#10;#&#9;kernel/console.c&#10;#&#9;kernel/console.o&#10;#&#9;kernel/kernelvec.S&#10;#&#9;kernel/printf.c&#10;#&#9;kernel/printf.o&#10;#&#9;kernel/test.c&#10;#&#9;kernel/timer.c&#10;#&#9;kernel/vm.c">
+      <change beforePath="$PROJECT_DIR$/.idea/deployment.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/deployment.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/console.o" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/entry.o" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/main.o" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/printf.o" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/uart.o" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -169,7 +120,7 @@
     "RunOnceActivity.readMode.enableVisualFormatting": "true",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "15aafd11",
+    "git-widget-placeholder": "main",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
