@@ -1,32 +1,44 @@
-#include "uart.h"
+#include "../include/console.h"
+#include "../include/fs.h"
+#include "../include/printf.h"
+#include "../include/uart.h"
+#include "../include/plic.h"
+#include "../include/trap.h"
+#include "../include/kalloc.h"
+#include "../include/vm.h"
+#include "../include/proc.h"
+#include "../include/test.h"
 
-// 来自链接脚本的外部符号
-extern char _bss_start[], _bss_end[];
+
 
 int main(void) {
+    printf("\n=== MiniOS Booting ===\n");
     uart_init();
-    
-    // 输出启动信息
-    uart_puts("\n=== MiniOS Boot Success ===\n");
-    uart_puts("Hello from C main function!\n");
-    uart_puts("BSS segment cleared successfully\n");
-    
-    // 进入主循环
-    while (1) {
-        
-        // 简单的呼吸灯效果（通过输出字符表示系统存活）
-        static int counter = 0;
-        if (++counter % 1000000 == 0) {
-            uart_putc('.');
-        }
-    }
-}
+    plic_init();
+    console_init();
+    trap_init(); // 初始化trap，内核中断跳转到kernelvec.S
+    kmem_init(); // 物理内存管理初始化
+    vmem_init(); // 虚拟内存页表初始化
+    vmem_enable_paging(); // 启用分页
+    virtio_disk_init();
+    fs_init(ROOTDEV, 0);
+    file_init();
 
-// 防止程序意外退出的安全措施
-__attribute__((noreturn)) void system_halt(void) {
-    uart_puts("\n*** System Halted ***\n");
-    while (1) {
-        // 无限循环，防止系统重启
-        asm volatile ("wfi"); // 等待中断，为节能
-    }
+    printf("main: system initialized.\n");
+
+    // 创建第一个用户进程
+    proc_userinit();
+
+    // 3. 启动调度器
+    //    注意：这一步是单行道。
+    //    scheduler() 会调用 swtch
+    //    swtch 会把当前的 sp (也就是 stack0) 换成 PID 2 的 kstack
+    //    从此以后，stack0 就被废弃了，除非所有 CPU 都空闲。
+    printf("main: starting scheduler...\n");
+
+    scheduler(); 
+
+    // 永远不该执行到这里
+    panic("main: scheduler returned");
+    return 0;
 }

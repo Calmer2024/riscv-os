@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="BackendCodeEditorMiscSettings">
+    <option name="/Default/Housekeeping/FeatureSuggestion/FeatureSuggestionManager/DisabledSuggesters/=SwitchToGoToActionSuggester/@EntryIndexedValue" value="true" type="bool" />
+    <option name="/Default/Housekeeping/GlobalSettingsUpgraded/IsUpgraded/@EntryValue" value="true" type="bool" />
+    <option name="/Default/RiderDebugger/RiderRestoreDecompile/RestoreDecompileSetting/@EntryValue" value="false" type="bool" />
+  </component>
+  <component name="CMakeProjectFlavorService">
+    <option name="flavorId" value="CMakePlainProjectFlavor" />
+  </component>
+  <component name="CMakeRunConfigurationManager">
+    <generated>
+      <config projectName="riscv-os" targetName="mkfs" />
+      <config projectName="riscv-os" targetName="kernel.elf" />
+      <config projectName="riscv-os" targetName="qemu" />
+      <config projectName="riscv-os" targetName="qemu-gdb" />
+      <config projectName="riscv-os" targetName="all" />
+    </generated>
+  </component>
+  <component name="CMakeSettings">
+    <configurations>
+      <configuration PROFILE_NAME="Debug" ENABLED="true" CONFIG_NAME="Debug" />
+    </configurations>
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="571d505b-b75e-46af-be1e-e686c9aeb0b5" name="更改" comment="&lt;fix&gt;:解决git冲突">
+      <change afterPath="$PROJECT_DIR$/.idea/deployment.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/editor.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/other.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/console.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/defs.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/elf.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/file.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/kalloc.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/pipe.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/printf.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/riscv.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/stdarg.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/stddef.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/string.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/syscall.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/sysinfo.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/test.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/timer.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/trap.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/uart.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/virtio.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/vm.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/console.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/console.o" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/entry.d" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/exec.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/file.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/kalloc.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/kernelvec.S" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/main.d" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/pipe.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/printf.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/printf.o" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/sleeplock.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/start.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/string.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/swtch.S" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/sysfile.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/test.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/timer.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/uart.d" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/virtio_disk.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/kernel/vm.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mkfs.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/从零构建操作系统-学生指导手册.pdf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/操作系统实践.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/types.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/types.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/kernel.ld" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/kernel.ld" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/main.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/uart.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/uart.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/uart.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test.c" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test.o" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ClangdSettings">
+    <option name="formatViaClangd" value="false" />
+  </component>
+  <component name="ExternalProjectsData">
+    <projectState path="$PROJECT_DIR$">
+      <ProjectState />
+    </projectState>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="main" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Calmer2024&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Calmer2024/riscv-os.git&quot;,
+    &quot;accountId&quot;: &quot;b1a77594-b89b-4049-aae7-f64fdea6afdc&quot;
+  }
+}</component>
+  <component name="MakefileLocalSettings">
+    <option name="availableProjects">
+      <map>
+        <entry>
+          <key>
+            <ExternalProjectPojo>
+              <option name="name" value="riscv-os" />
+              <option name="path" value="$PROJECT_DIR$" />
+            </ExternalProjectPojo>
+          </key>
+          <value>
+            <list>
+              <ExternalProjectPojo>
+                <option name="name" value="riscv-os" />
+                <option name="path" value="$PROJECT_DIR$" />
+              </ExternalProjectPojo>
+            </list>
+          </value>
+        </entry>
+      </map>
+    </option>
+    <option name="projectSyncType">
+      <map>
+        <entry key="$PROJECT_DIR$" value="RE_IMPORT" />
+      </map>
+    </option>
+  </component>
+  <component name="ProjectApplicationVersion">
+    <option name="ide" value="CLion" />
+    <option name="majorVersion" value="2025" />
+    <option name="minorVersion" value="2.1" />
+    <option name="productBranch" value="Classic" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 8
+}</component>
+  <component name="ProjectId" id="37DEdwx47dgIODOXvtpSkwifllb" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.RadMigrateCodeStyle": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "git-widget-placeholder": "15aafd11",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="RunManager" selected="原生应用程序.all">
+    <configuration name="all" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="riscv-os" TARGET_NAME="all" CONFIG_NAME="all" version="1">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="kernel.elf" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="riscv-os" TARGET_NAME="kernel.elf" CONFIG_NAME="kernel.elf" version="1">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="mkfs" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="riscv-os" TARGET_NAME="mkfs" CONFIG_NAME="mkfs" version="1">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="qemu-gdb" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="riscv-os" TARGET_NAME="qemu-gdb" CONFIG_NAME="qemu-gdb" version="1">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="qemu" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="riscv-os" TARGET_NAME="qemu" CONFIG_NAME="qemu" version="1">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <list>
+      <item itemvalue="原生应用程序.all" />
+      <item itemvalue="原生应用程序.kernel.elf" />
+      <item itemvalue="原生应用程序.mkfs" />
+      <item itemvalue="原生应用程序.qemu" />
+      <item itemvalue="原生应用程序.qemu-gdb" />
+    </list>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="571d505b-b75e-46af-be1e-e686c9aeb0b5" name="更改" comment="" />
+      <created>1766429333407</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1766429333407</updated>
+      <workItem from="1766429335684" duration="3909000" />
+      <workItem from="1766460816506" duration="10769000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="&lt;fix&gt;:解决git冲突" />
+    <option name="LAST_COMMIT_MESSAGE" value="&lt;fix&gt;:解决git冲突" />
+  </component>
+</project>
